@@ -715,6 +715,25 @@ def show_settings(config: Config, callback: SaveCallback | None = None) -> None:
     SettingsWindow(config, callback).show()
 
 
+def show_error(title: str, detail: str) -> None:
+    """Show a blocking error dialog, even when no settings window is open."""
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        # Bring the process forward: a dialog raised by a second launch would
+        # otherwise open behind whatever the user is looking at.
+        try:
+            from AppKit import NSApplication
+
+            NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
+        except Exception:  # noqa: BLE001 - not macOS, or no AppKit
+            pass
+        root.lift()
+        messagebox.showerror(title, detail, parent=root)
+    finally:
+        root.destroy()
+
+
 def ask_start_at_login_if_needed(config: Config | None = None) -> bool | None:
     """Ask the start-at-login question once, on the very first launch.
 

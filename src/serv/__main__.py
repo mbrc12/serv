@@ -15,10 +15,11 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 
-from .config import ConfigError, load_config
+from .config import Config, ConfigError, load_config
 from .locations import user_config_path
-from .server import build_server
+from .server import build_server, free_port
 from . import watch
 
 IPYTHON_VIEWER = Path("~/.local/share/ipython-html/serv.py")
@@ -103,6 +104,17 @@ def _delegate_ipython(port: int) -> None:
     os.execv(interpreter, [interpreter, str(viewer), "--port", str(port)])
 
 
+def _bind(config: Config, root: Path, port: int):
+    """Bind the HTTP server, or explain why that is not possible."""
+    return build_server(config, root, port)
+
+
+def _wait_for_port(port: int, interval: float = 2.0) -> None:
+    """Block until nothing is listening on the port."""
+    while not free_port(port):
+        time.sleep(interval)
+
+
 def _open_settings_window(config) -> None:
     """Run the settings window in this process, asking the first-run question."""
     from . import ui  # imported late: needs tkinter
@@ -144,15 +156,45 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
-        server, state = build_server(config, root, args.port)
+        server, state = _bind(config, root, args.port)
     except OSError as error:
-        # The app is single-instance: a second launch opens the settings window
-        # for the server that is already running (a file watcher applies them).
-        if args.app:
+        if args.agent:
+            # The login item waits for the port rather than exiting, so launchd
+            # does not restart it in a loop while another copy is running.
+            print(
+                f"serv: port {args.port} is in use; waiting for it to become free",
+                flush=True,
+            )
+            while True:
+                _wait_for_port(args.port)
+                try:
+                    server, state = _bind(config, root, args.port)
+                    break
+                except OSError:
+                    continue
+        elif args.no_tray:
+            # Terminal run: no dialogs, just a clear failure.
+            print(f"serv: port {args.port} is already in use: {error}", file=sys.stderr)
+            return 1
+        else:
+            # Only one server can own the port. Say so out loud, then attach to
+            # the running instance by opening its settings window; the file
+            # watcher there applies changes to the live server.
+            message = (
+                f"serv is already running on port {args.port}.\n\n"
+                "This launch cannot start a second copy, so it will exit. Use the "
+                "menu-bar icon to reach the running server, or quit it first "
+                "(Quit serv) to start a new one from here."
+            )
+            print(f"serv: {message}", file=sys.stderr)
+            try:
+                from . import ui
+
+                ui.show_error("serv is already running", message)
+            except Exception:  # noqa: BLE001 - no display; the message above stands
+                pass
             _spawn_settings()
             return 0
-        print(f"serv: cannot listen on port {args.port}: {error}", file=sys.stderr)
-        return 1
 
     url = f"http://localhost:{args.port}/"
     print(f"serving {root} at {url}", flush=True)
