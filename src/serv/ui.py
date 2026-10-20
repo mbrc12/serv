@@ -115,6 +115,7 @@ class SettingsWindow:
         self.text_vars: dict[str, tk.StringVar] = {}
         self.slider_vars: dict[str, tk.DoubleVar] = {}
         self.slider_labels: dict[str, tk.StringVar] = {}
+        self.boolean_vars: dict[str, tk.BooleanVar] = {}
         self.swatches: dict[str, tk.Canvas] = {}
         self.font_vars: dict[str, tk.StringVar] = {}
         self.system_font_vars: dict[str, tk.StringVar] = {}
@@ -506,6 +507,18 @@ class SettingsWindow:
             for key, caption in keys:
                 row = self._add_slider(parent, key, row, caption)
 
+        self.underline_links_var = tk.BooleanVar(value=self.values["type.underline_links"])
+        self._form_row(
+            parent,
+            row,
+            "Markdown links",
+            lambda line: ttk.Checkbutton(
+                line, text="Underline links", variable=self.underline_links_var
+            ),
+            align="e",
+        )
+        self.boolean_vars["type.underline_links"] = self.underline_links_var
+
     def _add_slider(self, parent: ttk.Frame, key: str, row: int, caption: str) -> int:
         spec = slider_for(key, self.values.get(key, ""))
         if spec is None:
@@ -622,6 +635,8 @@ class SettingsWindow:
         for key, variable in self.slider_vars.items():
             _, _, step, unit, _ = slider_for(key, self.values[key]) or (0, 0, 1, "", 0)
             values[key] = format_length(snap(variable.get(), step), unit)
+        for key, variable in self.boolean_vars.items():
+            values[key] = variable.get()
         self._stash_globs()
         values["server.no_process"] = [
             line.strip() for line in values["server.no_process"].splitlines() if line.strip()

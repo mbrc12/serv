@@ -28,6 +28,14 @@ def test_stylesheet_imports_google_fonts() -> None:
     css = stylesheet(load_config())
     assert "family=Crimson+Pro:ital,wght@0,400;0,600;1,400" in css
     assert "family=Fira+Code:wght@400;600" in css
+    assert "text-decoration-line: underline;" in css
+
+
+def test_link_underline_setting_changes_the_stylesheet() -> None:
+    config = load_config()
+    assert "text-decoration-line: underline;" in stylesheet(config)
+    no_underlines = replace(config, type=replace(config.type, underline_links=False))
+    assert "text-decoration-line: none;" in stylesheet(no_underlines)
 
 
 def test_local_font_skips_its_import() -> None:

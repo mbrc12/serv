@@ -206,6 +206,7 @@ strong, b {
 }
 
 a {
+  text-decoration-line: ${link_underline};
   text-decoration-thickness: 1px;
   text-underline-offset: 0.15em;
 }
@@ -355,7 +356,6 @@ section.footnotes ol {
 
 #TOC a {
   color: var(--green);
-  text-decoration: none;
 }
 
 .markdown-parent {
@@ -365,6 +365,7 @@ section.footnotes ol {
 
 .markdown-parent a {
   display: inline-flex;
+  text-decoration: none;
   padding: 0.25rem;
   color: var(--muted);
   border-radius: 3px;

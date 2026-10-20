@@ -59,6 +59,7 @@ md_size   = "1.2rem"
 md_table  = "1.1rem"
 code_size = "12px"
 line_height = "1.65"
+underline_links = true
 
 [layout]
 md_width    = "46rem"

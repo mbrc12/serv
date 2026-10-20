@@ -105,6 +105,7 @@ def stylesheet(config: Config) -> str:
         md_table=config.type.md_table,
         code_size=config.type.code_size,
         line_height=config.type.line_height,
+        link_underline="underline" if config.type.underline_links else "none",
         md_width=config.layout.md_width,
         md_gutter=config.layout.md_gutter,
         listing_width=config.layout.listing_width,

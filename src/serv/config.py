@@ -122,6 +122,7 @@ class Typography:
     code_size: str = "12px"
     #: Multiple of the font size, e.g. "1.65".
     line_height: str = "1.65"
+    underline_links: bool = True
 
 
 @dataclass(frozen=True)
@@ -263,6 +264,13 @@ def _number(section: dict, key: str, where: str) -> str:
     return value.strip()
 
 
+def _boolean(section: dict, key: str, where: str, default: bool) -> bool:
+    value = section.get(key, default)
+    if not isinstance(value, bool):
+        raise ConfigError(f"{where}.{key} must be true or false, got {value!r}")
+    return value
+
+
 def _weights(section: dict, key: str, where: str) -> str | None:
     """Read a weights query; None means the key is absent (derive it)."""
     if key not in section:
@@ -333,6 +341,7 @@ def parse_config(data: dict, source: Path | None = None) -> Config:
             md_table=_length(typography, "md_table", "type"),
             code_size=_length(typography, "code_size", "type"),
             line_height=_number(typography, "line_height", "type"),
+            underline_links=_boolean(typography, "underline_links", "type", True),
         ),
         layout=Layout(
             md_width=_length(layout, "md_width", "layout"),
@@ -434,6 +443,7 @@ def dump_config(config: Config) -> str:
         f"md_table  = {_quote(config.type.md_table)}",
         f"code_size = {_quote(config.type.code_size)}",
         f"line_height = {_quote(config.type.line_height)}",
+        f"underline_links = {str(config.type.underline_links).lower()}",
         "",
         "[layout]",
         f"md_width      = {_quote(config.layout.md_width)}",

@@ -75,3 +75,15 @@ def test_invalid_line_height_is_rejected(raw: dict) -> None:
     raw["type"]["line_height"] = "loose"
     with pytest.raises(ConfigError, match="line_height"):
         parse_config(raw)
+
+
+def test_underline_links_can_be_disabled(raw: dict) -> None:
+    raw["type"]["underline_links"] = False
+    config = parse_config(raw)
+    assert config.type.underline_links is False
+
+
+def test_invalid_underline_links_is_rejected(raw: dict) -> None:
+    raw["type"]["underline_links"] = "false"
+    with pytest.raises(ConfigError, match="underline_links"):
+        parse_config(raw)
