@@ -234,8 +234,9 @@ class SettingsWindow:
     ) -> tk.Widget:
         """Place a caption and its control on one row, on a shared center line.
 
-        The control is created inside the row frame by `build`, so the caption
-        and the control share one grid row and one vertical center.
+        The caption sits on the left and the control against the right edge of
+        the pane; the control is created inside the row frame by `build`, so both
+        share one grid row and therefore one vertical center.
         """
         line = ttk.Frame(parent)
         line.grid(row=row, column=0, sticky="ew", pady=4)
@@ -259,15 +260,17 @@ class SettingsWindow:
 
             def build(line, variable=variable, unit=unit):
                 holder = ttk.Frame(line)
+                # A fixed unit column, present on every row, keeps the fields on
+                # one right edge whether or not they carry a unit.
+                holder.columnconfigure(1, minsize=30)
                 entry = ttk.Entry(holder, textvariable=variable, width=10, justify="right")
-                entry.pack(side="left")
-                if unit:
-                    ttk.Label(holder, text=unit, foreground=self.muted).pack(
-                        side="left", padx=(6, 0)
-                    )
+                entry.grid(row=0, column=0, sticky="e")
+                ttk.Label(holder, text=unit, anchor="w", foreground=self.muted).grid(
+                    row=0, column=1, sticky="w", padx=(6, 0)
+                )
                 return holder
 
-            self._form_row(parent, index, caption, build)
+            self._form_row(parent, index, caption, build, align="e")
             if key == "server.max_render_bytes":
                 self.megabyte_var = variable
             else:
@@ -357,7 +360,7 @@ class SettingsWindow:
             self.scheme_combo = combo
             return combo
 
-        self._form_row(parent, 0, "Scheme", build_scheme)
+        self._form_row(parent, 0, "Scheme", build_scheme, align="e")
         # A focused combobox paints a blue indicator on macOS; let the group
         # heading take the initial focus instead.
         parent.after_idle(self.notebook.focus_set)
