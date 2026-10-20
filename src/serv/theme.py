@@ -27,6 +27,7 @@ VARIABLE_SECTIONS = (
     ("palette", "border"),
     ("palette", "hover"),
     ("palette", "selected"),
+    ("palette", "selected_text"),
     ("palette", "zebra"),
     ("palette", "red"),
     ("palette", "orange"),
@@ -46,6 +47,8 @@ VARIABLE_SECTIONS = (
     ("code", "number"),
     ("code", "tag"),
     ("code", "highlight"),
+    ("code", "block_bg"),
+    ("code", "block_border"),
 )
 
 GOOGLE_FONTS = "https://fonts.googleapis.com/css2"

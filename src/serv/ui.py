@@ -29,9 +29,9 @@ from .locations import user_config_path
 from .resources import TRAY_GLYPH_DARK, TRAY_GLYPH_LIGHT, data_path
 from .units import format_length, slider_for, snap
 
-WINDOW_WIDTH = 660
+WINDOW_WIDTH = 700
 MIN_WINDOW_HEIGHT = 420
-SWATCH_COLUMNS = 4
+SWATCH_COLUMNS = 3
 SYSTEM_FONT_ITEM = "System font…"
 
 #: Called with the saved config so an in-process server can apply it.
@@ -313,17 +313,29 @@ class SettingsWindow:
     def _build_colors(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(1, weight=1)
         ttk.Label(parent, text="Scheme").grid(row=0, column=0, sticky="w", padx=(0, 10))
-        self.scheme_labels = [
-            schemes.label_for(scheme.key) for scheme in schemes.load_schemes()
-        ] + [schemes.label_for(schemes.CUSTOM)]
-        self.scheme_var = tk.StringVar(
-            value=schemes.label_for(schemes.name_for_values(self.values))
+
+        current = schemes.name_for_values(self.values)
+        self.scheme_key = tk.StringVar(value=current)
+        self.scheme_label = tk.StringVar(value=schemes.label_for(current))
+        button = ttk.Menubutton(parent, textvariable=self.scheme_label, width=26)
+        menu = tk.Menu(button, tearoff=False)
+        # One flat list in file order: families together, light before dark.
+        for scheme in schemes.load_schemes():
+            menu.add_radiobutton(
+                label=scheme.label,
+                value=scheme.key,
+                variable=self.scheme_key,
+                command=lambda chosen=scheme: self._apply_scheme(chosen),
+            )
+        menu.add_separator()
+        menu.add_radiobutton(
+            label=schemes.label_for(schemes.CUSTOM),
+            value=schemes.CUSTOM,
+            variable=self.scheme_key,
         )
-        combo = ttk.Combobox(
-            parent, textvariable=self.scheme_var, values=self.scheme_labels, state="readonly", width=24
-        )
-        combo.grid(row=0, column=1, sticky="w", pady=(0, 4))
-        combo.bind("<<ComboboxSelected>>", self._scheme_changed)
+        button["menu"] = menu
+        button.grid(row=0, column=1, sticky="w", pady=(0, 4))
+        self.scheme_button = button
 
         row = 1
         for title, section, mapping in (
@@ -341,12 +353,14 @@ class SettingsWindow:
             for index, field in enumerate(fields(mapping)):
                 key = f"{section}.{field.name}"
                 cell = ttk.Frame(grid)
+                # Natural widths: a fixed cell size clips the longer labels such
+                # as "Text on selection".
                 cell.grid(
                     row=index // SWATCH_COLUMNS,
                     column=index % SWATCH_COLUMNS,
                     sticky="w",
-                    padx=(0, 18),
-                    pady=2,
+                    padx=(0, 26),
+                    pady=3,
                 )
                 canvas = tk.Canvas(cell, width=26, height=26, highlightthickness=0, cursor="hand2")
                 canvas.pack(side="left", padx=(0, 7))
@@ -355,14 +369,9 @@ class SettingsWindow:
                 ttk.Label(cell, text=labels.label_for(section, field.name)).pack(side="left")
                 self.swatches[key] = canvas
 
-    def _scheme_changed(self, _event=None) -> None:
-        label = self.scheme_var.get()
-        chosen = next(
-            (scheme for scheme in schemes.load_schemes() if scheme.label == label), None
-        )
-        if chosen is None:
-            return
-        self.values.update(chosen.colors())
+    def _apply_scheme(self, scheme: schemes.Scheme) -> None:
+        """Copy a scheme's colors into the draft and repaint the swatches."""
+        self.values.update(scheme.colors())
         self._refresh_swatches()
 
     def _pick_color(self, key: str) -> None:
@@ -381,9 +390,9 @@ class SettingsWindow:
     def _refresh_swatches(self) -> None:
         for key, canvas in self.swatches.items():
             _draw_swatch(canvas, hex_for_picker(self.values[key]))
-        self.scheme_var.set(
-            schemes.label_for(schemes.name_for_values(self.values))
-        )
+        key = schemes.name_for_values(self.values)
+        self.scheme_key.set(key)
+        self.scheme_label.set(schemes.label_for(key))
 
     def _build_typography(self, parent: ttk.Frame) -> None:
         # Column 0 takes the slack, so every control sits against the right edge

@@ -1,11 +1,16 @@
-# Prebuilt color schemes shown in the settings window's Colors section.
+# Prebuilt color schemes, ordered by family and then light → dark: Tokyo Night,
+# Catppuccin, Gruvbox, Nord, Solarized. The settings window lists them in file
+# order, so keep that order when adding a scheme.
 #
-# Picking one copies these values into the palette, accents and code sections of
-# ~/.config/serv/serv.toml; the file stays the single source of truth. A scheme
-# must define every color serv uses, otherwise it is rejected at startup.
+# Every value here is a color from the scheme's own published palette (Tokyo
+# Night, Catppuccin, Gruvbox, Nord, Solarized). Nothing is lightened or
+# darkened: where a role needs contrast, it uses a different member of the same
+# palette instead of a new shade.
 #
-# The first scheme matches config/serv.toml, so "Tokyo Night Day" is what a new
-# installation uses.
+# Picking one copies these values into ~/.config/serv/serv.toml; that file stays
+# the single source of truth. A scheme must define every color serv uses.
+
+# --------------------------------------------------------------------- Tokyo Night
 
 [schemes.tokyo-night-day]
 label = "Tokyo Night Day"
@@ -17,6 +22,7 @@ muted = "#6172b0"
 border = "#c4c8da"
 hover = "#d0d5e3"
 selected = "#b7c1e3"
+selected_text = "#343746"
 zebra = "transparent"
 red = "#f52a65"
 orange = "#b15c00"
@@ -40,6 +46,8 @@ function = "#3152a0"
 number = "#7136a2"
 tag = "#006d69"
 highlight = "rgba(113, 70, 166, 0.16)"
+block_bg = "#d0d5e3"
+block_border = "#b7c1e3"
 
 [schemes.tokyo-night]
 label = "Tokyo Night"
@@ -51,6 +59,7 @@ muted = "#7aa2f7"
 border = "#3b4261"
 hover = "#292e42"
 selected = "#364a82"
+selected_text = "#c0caf5"
 zebra = "transparent"
 red = "#f7768e"
 orange = "#ff9e64"
@@ -74,6 +83,10 @@ function = "#7aa2f7"
 number = "#ff9e64"
 tag = "#73daca"
 highlight = "rgba(187, 154, 247, 0.18)"
+block_bg = "#16161e"
+block_border = "#292e42"
+
+# -------------------------------------------------------------------- Catppuccin
 
 [schemes.catppuccin-latte]
 label = "Catppuccin Latte"
@@ -81,10 +94,11 @@ label = "Catppuccin Latte"
 [schemes.catppuccin-latte.palette]
 bg = "#eff1f5"
 text = "#4c4f69"
-muted = "#7287fd"
+muted = "#6c6f85"
 border = "#ccd0da"
-hover = "#dce0e8"
+hover = "#e6e9ef"
 selected = "#bcc0cc"
+selected_text = "#4c4f69"
 zebra = "transparent"
 red = "#d20f39"
 orange = "#fe640b"
@@ -100,7 +114,7 @@ directory = "#1e66f5"
 
 [schemes.catppuccin-latte.code]
 base = "#4c4f69"
-comment = "#8c8fa1"
+comment = "#7c7f93"
 keyword = "#8839ef"
 operator = "#04a5e5"
 string = "#40a02b"
@@ -108,6 +122,8 @@ function = "#1e66f5"
 number = "#fe640b"
 tag = "#179299"
 highlight = "rgba(136, 57, 239, 0.14)"
+block_bg = "#e6e9ef"
+block_border = "#ccd0da"
 
 [schemes.catppuccin-mocha]
 label = "Catppuccin Mocha"
@@ -115,10 +131,11 @@ label = "Catppuccin Mocha"
 [schemes.catppuccin-mocha.palette]
 bg = "#1e1e2e"
 text = "#cdd6f4"
-muted = "#89b4fa"
-border = "#45475a"
+muted = "#a6adc8"
+border = "#313244"
 hover = "#313244"
-selected = "#585b70"
+selected = "#45475a"
+selected_text = "#cdd6f4"
 zebra = "transparent"
 red = "#f38ba8"
 orange = "#fab387"
@@ -134,7 +151,7 @@ directory = "#89b4fa"
 
 [schemes.catppuccin-mocha.code]
 base = "#cdd6f4"
-comment = "#6c7086"
+comment = "#9399b2"
 keyword = "#cba6f7"
 operator = "#89dceb"
 string = "#a6e3a1"
@@ -142,6 +159,10 @@ function = "#89b4fa"
 number = "#fab387"
 tag = "#94e2d5"
 highlight = "rgba(203, 166, 247, 0.18)"
+block_bg = "#181825"
+block_border = "#313244"
+
+# ---------------------------------------------------------------------- Gruvbox
 
 [schemes.gruvbox-light]
 label = "Gruvbox Light"
@@ -152,7 +173,8 @@ text = "#3c3836"
 muted = "#7c6f64"
 border = "#d5c4a1"
 hover = "#ebdbb2"
-selected = "#d5c4a1"
+selected = "#bdae93"
+selected_text = "#3c3836"
 zebra = "transparent"
 red = "#9d0006"
 orange = "#af3a03"
@@ -162,13 +184,13 @@ teal = "#427b58"
 purple = "#8f3f71"
 
 [schemes.gruvbox-light.accents]
-markdown = "#8f3f71"
-listing = "#8f3f71"
+markdown = "#af3a03"
+listing = "#af3a03"
 directory = "#076678"
 
 [schemes.gruvbox-light.code]
 base = "#3c3836"
-comment = "#928374"
+comment = "#7c6f64"
 keyword = "#9d0006"
 operator = "#8f3f71"
 string = "#79740e"
@@ -176,17 +198,59 @@ function = "#076678"
 number = "#b57614"
 tag = "#427b58"
 highlight = "rgba(143, 63, 113, 0.14)"
+block_bg = "#ebdbb2"
+block_border = "#d5c4a1"
 
-[schemes.nord]
-label = "Nord"
+[schemes.gruvbox-dark]
+label = "Gruvbox Dark"
 
-[schemes.nord.palette]
+[schemes.gruvbox-dark.palette]
+bg = "#282828"
+text = "#ebdbb2"
+muted = "#a89984"
+border = "#504945"
+hover = "#3c3836"
+selected = "#665c54"
+selected_text = "#ebdbb2"
+zebra = "transparent"
+red = "#fb4934"
+orange = "#fe8019"
+green = "#b8bb26"
+blue = "#83a598"
+teal = "#8ec07c"
+purple = "#d3869b"
+
+[schemes.gruvbox-dark.accents]
+markdown = "#fe8019"
+listing = "#fe8019"
+directory = "#83a598"
+
+[schemes.gruvbox-dark.code]
+base = "#ebdbb2"
+comment = "#928374"
+keyword = "#fb4934"
+operator = "#fe8019"
+string = "#b8bb26"
+function = "#fabd2f"
+number = "#d3869b"
+tag = "#8ec07c"
+highlight = "rgba(211, 134, 155, 0.20)"
+block_bg = "#1d2021"
+block_border = "#3c3836"
+
+# -------------------------------------------------------------------------- Nord
+
+[schemes.nord-light]
+label = "Nord Light"
+
+[schemes.nord-light.palette]
 bg = "#eceff4"
 text = "#2e3440"
-muted = "#5e81ac"
+muted = "#4c566a"
 border = "#d8dee9"
 hover = "#e5e9f0"
-selected = "#d8dee9"
+selected = "#4c566a"
+selected_text = "#eceff4"
 zebra = "transparent"
 red = "#bf616a"
 orange = "#d08770"
@@ -195,21 +259,62 @@ blue = "#5e81ac"
 teal = "#8fbcbb"
 purple = "#b48ead"
 
-[schemes.nord.accents]
-markdown = "#b48ead"
-listing = "#b48ead"
+[schemes.nord-light.accents]
+markdown = "#5e81ac"
+listing = "#5e81ac"
 directory = "#5e81ac"
 
-[schemes.nord.code]
+[schemes.nord-light.code]
 base = "#2e3440"
 comment = "#4c566a"
 keyword = "#b48ead"
-operator = "#81a1c1"
+operator = "#5e81ac"
 string = "#a3be8c"
 function = "#5e81ac"
 number = "#d08770"
 tag = "#8fbcbb"
-highlight = "rgba(180, 142, 173, 0.18)"
+highlight = "rgba(129, 161, 193, 0.20)"
+block_bg = "#e5e9f0"
+block_border = "#d8dee9"
+
+[schemes.nord-dark]
+label = "Nord Dark"
+
+[schemes.nord-dark.palette]
+bg = "#2e3440"
+text = "#d8dee9"
+muted = "#81a1c1"
+border = "#3b4252"
+hover = "#3b4252"
+selected = "#4c566a"
+selected_text = "#eceff4"
+zebra = "transparent"
+red = "#bf616a"
+orange = "#d08770"
+green = "#a3be8c"
+blue = "#81a1c1"
+teal = "#88c0d0"
+purple = "#b48ead"
+
+[schemes.nord-dark.accents]
+markdown = "#88c0d0"
+listing = "#88c0d0"
+directory = "#8fbcbb"
+
+[schemes.nord-dark.code]
+base = "#d8dee9"
+comment = "#616e88"
+keyword = "#81a1c1"
+operator = "#88c0d0"
+string = "#a3be8c"
+function = "#88c0d0"
+number = "#b48ead"
+tag = "#8fbcbb"
+highlight = "rgba(136, 192, 208, 0.20)"
+block_bg = "#272c36"
+block_border = "#3b4252"
+
+# --------------------------------------------------------------------- Solarized
 
 [schemes.solarized-light]
 label = "Solarized Light"
@@ -217,10 +322,11 @@ label = "Solarized Light"
 [schemes.solarized-light.palette]
 bg = "#fdf6e3"
 text = "#586e75"
-muted = "#93a1a1"
+muted = "#657b83"
 border = "#eee8d5"
 hover = "#eee8d5"
-selected = "#e6dfc8"
+selected = "#93a1a1"
+selected_text = "#002b36"
 zebra = "transparent"
 red = "#dc322f"
 orange = "#cb4b16"
@@ -244,6 +350,8 @@ function = "#268bd2"
 number = "#d33682"
 tag = "#6c71c4"
 highlight = "rgba(108, 113, 196, 0.16)"
+block_bg = "#eee8d5"
+block_border = "#93a1a1"
 
 [schemes.solarized-dark]
 label = "Solarized Dark"
@@ -254,7 +362,8 @@ text = "#93a1a1"
 muted = "#839496"
 border = "#073642"
 hover = "#073642"
-selected = "#0b4a5a"
+selected = "#586e75"
+selected_text = "#fdf6e3"
 zebra = "transparent"
 red = "#dc322f"
 orange = "#cb4b16"
@@ -264,8 +373,8 @@ teal = "#2aa198"
 purple = "#6c71c4"
 
 [schemes.solarized-dark.accents]
-markdown = "#6c71c4"
-listing = "#6c71c4"
+markdown = "#b58900"
+listing = "#b58900"
 directory = "#268bd2"
 
 [schemes.solarized-dark.code]
@@ -277,4 +386,6 @@ string = "#2aa198"
 function = "#268bd2"
 number = "#d33682"
 tag = "#6c71c4"
-highlight = "rgba(108, 113, 196, 0.22)"
+highlight = "rgba(181, 137, 0, 0.18)"
+block_bg = "#073642"
+block_border = "#586e75"

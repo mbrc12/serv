@@ -16,7 +16,7 @@ def test_bundled_schemes_are_valid_and_complete() -> None:
     for scheme in bundled:
         assert scheme.key and scheme.label
         assert scheme.palette.bg.startswith("#")
-        assert len(scheme.colors()) == 25
+        assert len(scheme.colors()) == 28
 
 
 def test_default_config_matches_the_first_scheme() -> None:
@@ -48,7 +48,7 @@ def test_values_round_trip_through_a_scheme() -> None:
     assert schemes.name_for_values(values) == scheme.key
 
 
-@pytest.mark.parametrize("key", ["tokyo-night-day", "nord", "solarized-dark"])
+@pytest.mark.parametrize("key", ["tokyo-night-day", "nord-light", "solarized-dark"])
 def test_every_scheme_labels_are_unique(key: str) -> None:
     labels = [scheme.label for scheme in schemes.load_schemes()]
     assert len(labels) == len(set(labels))

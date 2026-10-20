@@ -47,7 +47,23 @@ a:focus-visible {
 img { max-width: 100%; }
 
 blockquote {
+  margin: 1.5rem 0;
+  padding: 0.6rem 1rem 0.6rem 1.1rem;
+  border-left: 3px solid var(--border);
+  border-radius: 0 8px 8px 0;
+  /* A softer voice that works on any palette: blending with the page rather
+     than borrowing the accent colour, which is blue in several schemes. */
+  color: var(--text);
+  opacity: 0.88;
   font-style: italic;
+}
+
+blockquote > :first-child {
+  margin-top: 0;
+}
+
+blockquote > :last-child {
+  margin-bottom: 0;
 }
 
 code, kbd, samp {
@@ -94,25 +110,30 @@ body.markdown-page .katex {
   margin: 1rem 0;
 }
 
-/* Fenced code on markdown pages: a quiet panel, tokens from the code palette. */
+/* Fenced code on markdown pages: a panel that reads as code, with the token
+   palette above. The surface is its own config key so it can sit darker than
+   the page in a light scheme and darker still in a dark one. */
 body.markdown-page pre {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  line-height: 1.5;
+  background: var(--code-block-bg);
+  border: 1px solid var(--code-block-border);
+  border-radius: 9px;
+  padding: 0.85em 1.1em;
+  line-height: 1.55;
   font-size: 0.9rem;
+  color: var(--code-base);
 }
 
 body.markdown-page pre code {
   font-size: inherit;
   background: transparent;
   padding: 0;
+  color: inherit;
 }
 
 body.markdown-page :not(pre) > code {
   background: var(--hover);
-  border-radius: 3px;
-  padding: 0.1em 0.3em;
+  border-radius: 5px;
+  padding: 0.1em 0.35em;
 }
 
 .token.comment,
@@ -144,24 +165,134 @@ body.markdown-page :not(pre) > code {
 
 /* --------------------------------------------------------------- markdown */
 
+body.markdown-page h2 {
+  margin-top: 2.2rem;
+}
+
+body.markdown-page h3,
+body.markdown-page h4 {
+  margin-top: 1.7rem;
+}
+
+body.markdown-page p,
+body.markdown-page ul,
+body.markdown-page ol,
+body.markdown-page dl {
+  margin: 0.85rem 0;
+}
+
+ul, ol {
+  padding-left: 1.5rem;
+}
+
+li + li {
+  margin-top: 0.3rem;
+}
+
+li > ul,
+li > ol {
+  margin: 0.3rem 0;
+}
+
+hr {
+  height: 0;
+  margin: 2rem 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+strong, b {
+  font-weight: 600;
+}
+
+a {
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15em;
+}
+
+img {
+  border-radius: 8px;
+}
+
+kbd {
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0.05em 0.35em;
+  background: var(--hover);
+  font-size: 0.85em;
+}
+
+mark {
+  background: var(--selected);
+  color: inherit;
+  padding: 0 0.15em;
+  border-radius: 2px;
+}
+
+abbr[title] {
+  text-decoration: underline dotted;
+  cursor: help;
+}
+
+sup, sub {
+  line-height: 0;
+}
+
+figure {
+  margin: 1.5rem 0;
+}
+
+figcaption {
+  margin-top: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+details {
+  margin: 1rem 0;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+
+summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
 table {
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   width: 100%;
   margin: 1.25rem 0;
   font-size: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
 }
 
 th, td {
   padding: 0.5em 0.75em;
-  border: 1px solid var(--border);
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   text-align: left;
   vertical-align: top;
 }
 
+tr > *:last-child {
+  border-right: 0;
+}
+
+tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
 th {
   background: var(--selected);
+  color: var(--selected-text);
   font-weight: 600;
-  border-bottom: 2px solid var(--border);
 }
 
 tbody tr:nth-child(even) {
@@ -195,6 +326,7 @@ section.footnotes {
   border-top: 1px solid var(--border);
   font-size: 0.92rem;
   margin-top: 2.5rem;
+  padding-top: 0.75rem;
 }
 
 section.footnotes ol {
@@ -213,6 +345,7 @@ section.footnotes ol {
   margin: 1.5rem 0 2rem;
   padding: 0.75rem 1rem;
   border-left: 3px solid var(--green);
+  border-radius: 0 10px 10px 0;
 }
 
 #TOC ul {
@@ -322,6 +455,8 @@ body.code-page {
   width: auto;
   max-width: 100%;
   margin: 1.25rem 0;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 .chem-props caption {
@@ -340,6 +475,7 @@ body.code-page {
 
 .chem-props thead th {
   background: var(--selected);
+  color: var(--selected-text);
 }
 
 .chem-props tbody th {
@@ -385,16 +521,29 @@ body.listing-page h1 {
 }
 
 .directory-list li {
+  min-width: 0;
+}
+
+/* The anchor fills the grid cell, so the whole tile is clickable. */
+.directory-list a.entry {
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
-  min-width: 0;
+  height: 100%;
   padding: 0.3rem 0.5rem;
-  border-radius: 4px;
+  border-radius: 8px;
+  text-decoration: none;
+  color: inherit;
 }
 
-.directory-list li:hover {
+.directory-list li:hover a.entry,
+.directory-list a.entry:hover {
   background: var(--hover);
+}
+
+.directory-list a.entry:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 1px;
 }
 
 .directory-list .name {

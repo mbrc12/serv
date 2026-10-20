@@ -92,6 +92,33 @@ LISTING_SCRIPT = """<script>
 </script>"""
 
 
+def prism_components(languages: set[str]) -> tuple[str, ...]:
+    """Return the Prism component files a set of languages needs, in order."""
+    ordered: list[str] = []
+    for language in sorted(languages):
+        for component in PRISM_COMPONENTS.get(language, ()):
+            if component not in ordered:
+                ordered.append(component)
+    return tuple(ordered)
+
+
+def prism_scripts(languages: set[str]) -> str:
+    """Return Prism and its language files, ready to run after the page body.
+
+    Fenced blocks in Markdown carry ``language-*`` classes, so the same bundle the
+    source pages use highlights them; nothing is loaded for a page with no code.
+    """
+    if not languages:
+        return ""
+    sources = [f"{PRISM_BASE}/prism.min.js"]
+    sources.extend(
+        f"{PRISM_BASE}/components/prism-{component}.min.js"
+        for component in prism_components(languages)
+    )
+    tags = "\n".join(f'  <script src="{source}"></script>' for source in sources)
+    return f"\n{tags}\n  <script>Prism.highlightAll();</script>"
+
+
 def document(
     title: str,
     body: str,
@@ -199,12 +226,15 @@ def _listing_row(path: Path, name: str) -> str:
     hidden = " hidden-entry" if name.startswith(".") else ""
     href = html.escape(name + ("/" if is_directory else ""), quote=True)
     icon = FOLDER_ICON if is_directory else FILE_ICON
+    # The anchor wraps the whole cell, so a click anywhere in the tile opens the
+    # entry rather than only the text of its name.
     return (
         f'<li class="{item_class}{hidden}">'
-        f'<a class="name {item_class}" href="{href}">{icon}'
-        f'<span class="label">{html.escape(display)}</span></a>'
+        f'<a class="entry {item_class}" href="{href}">'
+        f'<span class="name {item_class}">{icon}'
+        f'<span class="label">{html.escape(display)}</span></span>'
         f'<span class="meta"><time>{modified}</time>'
-        f'<span class="size">{size}</span></span></li>'
+        f'<span class="size">{size}</span></span></a></li>'
     )
 
 
@@ -246,6 +276,8 @@ def read_chemistry_js() -> str:
 __all__ = [
     "PRISM_BASE",
     "PRISM_COMPONENTS",
+    "prism_components",
+    "prism_scripts",
     "code_page",
     "document",
     "format_file_size",

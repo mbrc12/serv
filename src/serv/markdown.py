@@ -19,8 +19,8 @@ from mdit_py_plugins.footnote import footnote_plugin
 from mdit_py_plugins.tasklists import tasklists_plugin
 
 from .config import Config
-from .page import document, parent_navigation
-from .plugins import Registry, default_registry
+from .page import document, parent_navigation, prism_scripts
+from .plugins import Registry, default_registry, parse_fence_info
 
 # Pandoc's auto-identifier rules: keep word characters, underscores, hyphens and
 # periods, turn whitespace into hyphens, and never let an id start with a digit.
@@ -149,6 +149,24 @@ class MarkdownRenderer:
             entries.append((level, anchor, text))
         return entries
 
+    def _code_languages(self, tokens: list[Token]) -> set[str]:
+        """Return the languages of the fences Prism should highlight.
+
+        Plugin fences (chemistry, Mermaid) are drawn by their own code and are
+        skipped here, so their CDN payloads stay off the page.
+        """
+        languages: set[str] = set()
+        for token in tokens:
+            if token.type != "fence":
+                continue
+            owner = self.registry.fence_owner(token.info)
+            if owner is not None:
+                continue
+            name, _ = parse_fence_info(token.info)
+            if name:
+                languages.add(name.lower())
+        return languages
+
     def render_body(self, source: str) -> tuple[str, list[tuple[int, str, str]]]:
         """Render Markdown source to a body fragment and its heading list."""
         tokens = self.md.parse(source)
@@ -157,7 +175,9 @@ class MarkdownRenderer:
 
     def render_document(self, source: str, title: str, parent_href: str) -> str:
         """Render Markdown source to a complete page."""
-        body, headings = self.render_body(source)
+        tokens = self.md.parse(source)
+        headings = self._headings(tokens)
+        body = self.md.renderer.render(tokens, self.md.options, {})
         toc = build_toc(headings)
         content = parent_navigation(parent_href) + "\n" + place_toc(body, toc)
         page_title = heading_title(headings) or title
@@ -166,6 +186,7 @@ class MarkdownRenderer:
             content,
             body_class="markdown-page",
             head=self.registry.head(content, self.config),
+            scripts=prism_scripts(self._code_languages(tokens)),
         )
 
 

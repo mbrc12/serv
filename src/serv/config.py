@@ -71,6 +71,8 @@ class Palette:
     border: str
     hover: str
     selected: str
+    #: Text that sits on a selected surface, e.g. a table header.
+    selected_text: str
     zebra: str
     red: str
     orange: str
@@ -101,6 +103,9 @@ class CodePalette:
     number: str
     tag: str
     highlight: str
+    #: Surface behind a code block on a Markdown page, and its border.
+    block_bg: str
+    block_border: str
 
 
 @dataclass(frozen=True)
@@ -186,8 +191,29 @@ def _require_mapping(section: object, name: str) -> dict:
     return section
 
 
+@lru_cache(maxsize=1)
+def bundled_section(section: str) -> dict:
+    """Return one section of the shipped defaults, unvalidated.
+
+    New colour keys appear from time to time; a config file written by an older
+    version simply lacks them. Falling back to the bundled value keeps those
+    files working, while a present-but-invalid value still fails loudly.
+    """
+    path = default_config_path()
+    if path is None:
+        return {}
+    try:
+        data = tomllib.loads(path.read_text())
+    except tomllib.TOMLDecodeError:
+        return {}
+    table = data.get(section)
+    return table if isinstance(table, dict) else {}
+
+
 def _color(section: dict, key: str, where: str) -> str:
     value = section.get(key)
+    if value is None:
+        value = bundled_section(where).get(key)
     if not isinstance(value, str) or not _COLOR.match(value):
         raise ConfigError(f"{where}.{key} is not a CSS color: {value!r}")
     return value

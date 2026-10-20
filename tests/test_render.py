@@ -128,3 +128,28 @@ def test_raw_html_is_allowed(renderer: MarkdownRenderer) -> None:
 def test_single_h1_document_still_renders(renderer: MarkdownRenderer) -> None:
     html = render(renderer, "# Only heading\n\nBody.\n")
     assert html.count("<nav id=\"TOC\"") == 1
+
+
+def test_fenced_code_loads_prism_for_its_language(renderer: MarkdownRenderer) -> None:
+    html = render(renderer, "```python\nprint('hi')\n```\n")
+    assert "prism.min.js" in html
+    assert "prism-python.min.js" in html
+    assert "Prism.highlightAll()" in html
+
+
+def test_pages_without_code_do_not_load_prism(renderer: MarkdownRenderer) -> None:
+    assert "prism" not in render(renderer, "# Title\n\nOnly prose.\n")
+
+
+def test_several_fences_share_one_prism_bundle(renderer: MarkdownRenderer) -> None:
+    html = render(renderer, "```python\nx = 1\n```\n\n```cpp\nint x;\n```\n")
+    assert html.count("prism.min.js") == 1
+    assert "prism-python.min.js" in html
+    assert "prism-cpp.min.js" in html
+    assert html.count("prism-c.min.js") == 1
+
+
+def test_plugin_fences_are_not_handed_to_prism(renderer: MarkdownRenderer) -> None:
+    html = render(renderer, "```smiles\nCCO\n```\n\n```mermaid\ngraph TD; A-->B\n```\n")
+    assert "RDKit" in html and "mermaid.esm.min.mjs" in html
+    assert "prism.min.js" not in html

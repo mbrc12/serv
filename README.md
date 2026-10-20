@@ -74,7 +74,7 @@ the server with a clear message.
 | --- | --- |
 | `server` | `port`, `no_process` (glob list), `max_render_bytes` |
 | `cache` | `entries` (rendered pages kept in memory) |
-| `palette` | `bg`, `text`, `muted`, `border`, `hover`, `selected`, `zebra`, `red`, `orange`, `green`, `blue`, `teal`, `purple` |
+| `palette` | `bg`, `text`, `muted`, `border`, `hover`, `selected`, `selected_text`, `zebra`, `red`, `orange`, `green`, `blue`, `teal`, `purple` |
 | `accents` | `markdown`, `listing`, `directory` |
 | `code` | `base`, `comment`, `keyword`, `operator`, `string`, `function`, `number`, `tag`, `highlight` |
 | `type` | `reading`, `mono`, `reading_weights`, `mono_weights`, `md_size`, `md_table`, `code_size` |
@@ -83,10 +83,17 @@ the server with a clear message.
 The settings window is a thin shell over that file:
 
 - **General** — port, the render size limit, cache size, verbatim globs, login item.
-- **Colors** — a Scheme dropdown with eight prebuilt palettes, then one swatch per
+- **Colors** — a Scheme menu listing every palette in family order (Tokyo Night,
+  Catppuccin, Gruvbox, Nord, Solarized, light then dark), then one swatch per
   colour with a plain-language label (the raw key stays as a tooltip).
 - **Type & Layout** — font pickers (curated Google Fonts or any installed family)
   and stepped sliders for the sizes.
+
+Every scheme value is a member of that theme's published palette — nothing is
+lightened or darkened. Where a role needed more contrast it borrows a different
+palette member (for example a table header uses the theme's dark surface with
+`selected_text` on top) rather than inventing a shade. A few pastel syntax
+colours in the light variants are low-contrast by design of those palettes.
 
 The supporting tables are data, not code: `config/schemes.toml` (palettes),
 `config/fonts.toml` (families and their Google Fonts axis queries) and
