@@ -88,6 +88,47 @@ def test_rebuilding_the_type_tab_keeps_general_edits(window) -> None:
     assert parse_config(window._collect()).server.port == 1234
 
 
+def test_largest_file_is_edited_in_megabytes(window) -> None:
+    assert window.megabyte_var.get() == "1"
+    assert window._collect()["server"]["max_render_bytes"] == 1048576
+
+    window.megabyte_var.set("2.5")
+    assert window._collect()["server"]["max_render_bytes"] == int(2.5 * 1024 * 1024)
+
+
+@pytest.mark.parametrize("text", ["", "big", "0", "-1"])
+def test_bad_megabyte_values_are_rejected(text: str) -> None:
+    from serv.ui import SettingsWindow
+
+    with pytest.raises(ValueError):
+        SettingsWindow._megabytes_as_bytes(text)
+
+
+def test_font_dropdown_offers_the_catalogue_then_installed_fonts(window) -> None:
+    from serv import fonts
+    from serv.ui import SYSTEM_FONT_ITEM
+
+    window.notebook.select(2)
+    window.root.update_idletasks()
+    catalogue = [choice.name for choice in fonts.choices_for("reading")]
+    assert window.values["type.reading"] in catalogue
+
+    window.font_vars["reading"].set(SYSTEM_FONT_ITEM)
+    window._font_choice_changed("reading")
+    window.root.update_idletasks()
+    assert window.local_font["reading"] is True
+    assert window.values["type.reading_weights"] == ""
+    assert window.values["type.reading"]  # an installed family was chosen
+    assert "reading" in window.system_font_vars
+
+    window.font_vars["reading"].set("Literata")
+    window._font_choice_changed("reading")
+    window.root.update_idletasks()
+    assert window.local_font["reading"] is False
+    assert window.values["type.reading_weights"].startswith("ital,wght@")
+    assert "reading" not in window.system_font_vars
+
+
 def test_save_config_writes_a_temporary_file(window, tmp_path: Path) -> None:
     target = tmp_path / "serv.toml"
     config = parse_config(window._collect())

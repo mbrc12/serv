@@ -115,6 +115,14 @@ class SettingsWindow:
         self.slider_vars: dict[str, tk.DoubleVar] = {}
         self.slider_labels: dict[str, tk.StringVar] = {}
         self.swatches: dict[str, tk.Canvas] = {}
+        self.font_vars: dict[str, tk.StringVar] = {}
+        self.system_font_vars: dict[str, tk.StringVar] = {}
+        #: True when a role uses a font installed on this machine.
+        self.local_font: dict[str, bool] = {
+            role: self.values[f"type.{role}"] not in self._catalogue_names(role)
+            for role in ("reading", "mono")
+        }
+        self.megabyte_var: tk.StringVar | None = None
         self.glob_entries: list[tk.Entry] = []
         self.login_var = tk.IntVar(value=1 if autostart.is_installed() else 0)
         self.theme = ttk.Style()
@@ -122,6 +130,16 @@ class SettingsWindow:
         self.muted = _muted_color(self.root)
         self._build()
         self._resize_to_content()
+
+    @staticmethod
+    def _catalogue_names(role: str) -> list[str]:
+        """Return the curated Google Fonts families for a role."""
+        return [choice.name for choice in fonts.choices_for(role)]
+
+    @staticmethod
+    def _installed_families(widget: tk.Misc) -> list[str]:
+        """Return the font families installed on this machine."""
+        return sorted(set(tkfont.families(widget)))
 
     def _resize_to_content(self, _event=None) -> None:
         """Size the window to the visible section, keeping a single width.
@@ -188,12 +206,9 @@ class SettingsWindow:
         header.pack(fill="x")
         try:
             glyph = TRAY_GLYPH_DARK if appearance.is_dark() else TRAY_GLYPH_LIGHT
-            # One image pixel is one device pixel in Tk, so pick the asset that
-            # fills a 22-point box at this display's density instead of scaling.
-            density = round(self.root.winfo_fpixels("1i") / 72)
+            # Drawn at its natural pixel size: 44 pixels fills a 22-point box on
+            # a Retina display, so the glyph is never resampled.
             image = tk.PhotoImage(file=str(data_path(glyph)))
-            if density == 1:
-                image = image.subsample(2)
             self._icon = image  # keep a reference or Tk drops it
             ttk.Label(header, image=image).grid(row=0, column=0, rowspan=2, padx=(0, 12))
         except tk.TclError:
@@ -210,16 +225,23 @@ class SettingsWindow:
     def _build_general(self, parent: ttk.Frame) -> None:
         parent.columnconfigure(1, weight=1)
         rows = (
-            ("server.port", "Port"),
-            ("server.max_render_bytes", "Largest rendered file (bytes)"),
-            ("cache.entries", "Cached pages"),
+            ("server.port", "Port", ""),
+            ("server.max_render_bytes", "Largest rendered file", "MB"),
+            ("cache.entries", "Cached pages", ""),
         )
-        for index, (key, caption) in enumerate(rows):
+        for index, (key, caption, unit) in enumerate(rows):
             ttk.Label(parent, text=caption).grid(row=index, column=0, sticky="w", pady=4)
-            variable = tk.StringVar(value=self.values[key])
-            entry = ttk.Entry(parent, textvariable=variable, width=14, justify="right")
-            entry.grid(row=index, column=1, sticky="w", pady=4)
-            self.text_vars[key] = variable
+            variable = tk.StringVar(value=self._display_value(key))
+            holder = ttk.Frame(parent)
+            holder.grid(row=index, column=1, sticky="w", pady=4)
+            entry = ttk.Entry(holder, textvariable=variable, width=10, justify="right")
+            entry.pack(side="left")
+            if unit:
+                ttk.Label(holder, text=unit, foreground=self.muted).pack(side="left", padx=(6, 0))
+            if key == "server.max_render_bytes":
+                self.megabyte_var = variable
+            else:
+                self.text_vars[key] = variable
 
         heading_row = len(rows)
         ttk.Label(parent, text="Served verbatim", font=_bold(self.base_font)).grid(
@@ -242,6 +264,13 @@ class SettingsWindow:
         ttk.Checkbutton(
             parent, text="Start serv at login", variable=self.login_var
         ).grid(row=heading_row + 4, column=0, columnspan=2, sticky="w", pady=(18, 0))
+
+    def _display_value(self, key: str) -> str:
+        """Return a config value as it should appear in a text field."""
+        if key == "server.max_render_bytes":
+            megabytes = int(self.values[key]) / (1024 * 1024)
+            return f"{round(megabytes, 2):g}"
+        return self.values[key]
 
     def _render_globs(self) -> None:
         for child in self.glob_frame.winfo_children():
@@ -363,13 +392,44 @@ class SettingsWindow:
         row = 0
         for role, caption in (("reading", "Reading font"), ("mono", "Monospace font")):
             ttk.Label(parent, text=caption).grid(row=row, column=0, sticky="w", pady=4)
-            ttk.Button(
-                parent,
-                text=self.values[f"type.{role}"] + "  ▾",
-                width=30,
-                command=lambda name=role: self._choose_font(name),
-            ).grid(row=row, column=1, sticky="e", pady=4)
+            options = [*self._catalogue_names(role), SYSTEM_FONT_ITEM]
+            current = SYSTEM_FONT_ITEM if self.local_font[role] else self.values[f"type.{role}"]
+            variable = tk.StringVar(value=current)
+            combo = ttk.Combobox(
+                parent, textvariable=variable, values=options, state="readonly", width=30
+            )
+            combo.grid(row=row, column=1, sticky="e", pady=4)
+            combo.bind(
+                "<<ComboboxSelected>>", lambda _event, name=role: self._font_choice_changed(name)
+            )
+            self.font_vars[role] = variable
             row += 1
+
+            if self.local_font[role]:
+                # Only the families actually installed here, so the long list
+                # appears solely for someone who asked for a system font.
+                ttk.Label(parent, text="Installed", foreground=self.muted).grid(
+                    row=row, column=0, sticky="w", padx=(16, 0), pady=(0, 4)
+                )
+                installed = self._installed_families(self.root)
+                family = self.values[f"type.{role}"]
+                if family not in installed:
+                    installed.insert(0, family)
+                system_variable = tk.StringVar(value=family)
+                system_combo = ttk.Combobox(
+                    parent,
+                    textvariable=system_variable,
+                    values=installed,
+                    state="readonly",
+                    width=30,
+                )
+                system_combo.grid(row=row, column=1, sticky="e", pady=(0, 4))
+                system_combo.bind(
+                    "<<ComboboxSelected>>",
+                    lambda _event, name=role: self._system_font_changed(name),
+                )
+                self.system_font_vars[role] = system_variable
+                row += 1
 
         for title, keys in (
             (
@@ -436,13 +496,33 @@ class SettingsWindow:
             variable.set(value)
         self.slider_labels[key].set(format_length(value, unit))
 
-    def _choose_font(self, role: str) -> None:
-        chosen = FontPicker(self.root, self.base_font, role).result
-        if not chosen:
+    def _font_choice_changed(self, role: str) -> None:
+        """Apply a choice from the curated list, or switch to installed fonts."""
+        choice = self.font_vars[role].get()
+        if choice == SYSTEM_FONT_ITEM:
+            self.local_font[role] = True
+            installed = self._installed_families(self.root)
+            family = self.values[f"type.{role}"]
+            if family not in installed and installed:
+                family = installed[0]
+            self.values[f"type.{role}"] = family
+            self.values[f"type.{role}_weights"] = fonts.weights_for(role, family) or ""
+            self._rebuild_typography()
             return
-        self.values[f"type.{role}"] = chosen
-        weights = fonts.weights_for(role, chosen) or ""
-        self.values[f"type.{role}_weights"] = weights
+        self.local_font[role] = False
+        self.values[f"type.{role}"] = choice
+        self.values[f"type.{role}_weights"] = fonts.weights_for(role, choice) or ""
+        self._rebuild_typography()
+
+    def _system_font_changed(self, role: str) -> None:
+        """Apply a family chosen from the installed-font list."""
+        family = self.system_font_vars[role].get()
+        if not family:
+            return
+        self.local_font[role] = True
+        self.values[f"type.{role}"] = family
+        # An installed family may also be a Google font; keep its webfont then.
+        self.values[f"type.{role}_weights"] = fonts.weights_for(role, family) or ""
         self._rebuild_typography()
 
     def _rebuild_typography(self) -> None:
@@ -456,6 +536,8 @@ class SettingsWindow:
             del self.text_vars[key]
         self.slider_vars.clear()
         self.slider_labels.clear()
+        self.font_vars.clear()
+        self.system_font_vars.clear()
         self._build_typography(frame)
         self._resize_to_content()
 
@@ -487,6 +569,11 @@ class SettingsWindow:
         ]
 
         data: dict[str, dict] = {}
+        if self.megabyte_var is not None:
+            values["server.max_render_bytes"] = self._megabytes_as_bytes(
+                self.megabyte_var.get()
+            )
+
         for key, value in values.items():
             section, name = key.split(".", 1)
             data.setdefault(section, {})[name] = value
@@ -494,6 +581,17 @@ class SettingsWindow:
             section, name = key.split(".", 1)
             data[section][name] = int(values[key])
         return data
+
+    @staticmethod
+    def _megabytes_as_bytes(text: str) -> str:
+        """Convert the MB field to the byte count the config stores."""
+        try:
+            megabytes = float(text.strip())
+        except ValueError as error:
+            raise ValueError("Largest rendered file must be a number of megabytes") from error
+        if megabytes <= 0:
+            raise ValueError("Largest rendered file must be greater than zero")
+        return str(int(round(megabytes * 1024 * 1024)))
 
     def _save(self) -> None:
         try:
@@ -549,65 +647,6 @@ class SettingsWindow:
     def show(self) -> None:
         """Show the window and run its event loop until it closes."""
         self.root.mainloop()
-
-
-class FontPicker(tk.Toplevel):
-    """A small modal list of installed font families with a search box."""
-
-    def __init__(self, parent: tk.Misc, base_font: tkfont.Font, role: str) -> None:
-        super().__init__(parent)
-        self.title("Choose a font")
-        self.result: str | None = None
-        self.resizable(False, False)
-        self.transient(parent)
-        self.families = sorted(set(tkfont.families(self)))
-        self.query = tk.StringVar()
-
-        frame = ttk.Frame(self, padding=12)
-        frame.pack(fill="both", expand=True)
-        search = ttk.Entry(frame, textvariable=self.query)
-        search.pack(fill="x")
-        search.bind("<KeyRelease>", lambda _event: self._filter())
-        search.focus_set()
-
-        self.listbox = tk.Listbox(frame, height=14, width=38, activestyle="none")
-        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=self.listbox.yview)
-        self.listbox.configure(yscrollcommand=scrollbar.set)
-        self.listbox.pack(side="left", fill="both", expand=True, pady=8)
-        scrollbar.pack(side="right", fill="y", pady=8)
-        self.listbox.bind("<Double-Button-1>", lambda _event: self._accept())
-        self.listbox.bind("<Return>", lambda _event: self._accept())
-
-        buttons = ttk.Frame(frame)
-        buttons.pack(fill="x")
-        ttk.Button(buttons, text="Cancel", command=self._cancel, width=9).pack(side="right")
-        ttk.Button(buttons, text="Choose", command=self._accept, width=9).pack(
-            side="right", padx=(0, 8)
-        )
-        self._fill(self.families)
-        _center(self, 320, 360)
-        self.grab_set()
-        self.wait_window(self)
-
-    def _fill(self, families: list[str]) -> None:
-        self.listbox.delete(0, "end")
-        for family in families:
-            self.listbox.insert("end", family)
-        if families:
-            self.listbox.selection_set(0)
-
-    def _filter(self) -> None:
-        text = self.query.get().lower()
-        self._fill([family for family in self.families if text in family.lower()])
-
-    def _accept(self) -> None:
-        selection = self.listbox.curselection()
-        if selection:
-            self.result = self.listbox.get(selection[0])
-        self.destroy()
-
-    def _cancel(self) -> None:
-        self.destroy()
 
 
 # ---------------------------------------------------------------- entry points
