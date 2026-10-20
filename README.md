@@ -1,62 +1,58 @@
 # serv
 
-A local file server for macOS: it renders Markdown in process, highlights source
-files, and serves everything under your home directory at
-`http://localhost:1002/`. It ships as a menu-bar app with a small settings
-window.
+A local file server: it renders Markdown in process, highlights source files,
+and serves everything under your home directory at `http://localhost:1002/`. It
+runs on macOS, Linux and Windows with a tray icon and a desktop settings window.
 
 - No `pandoc`; Markdown → HTML happens in Python (`markdown-it-py`).
 - Math, chemistry and Mermaid are optional plugins, loaded from a CDN on pages
   that use them.
 - All colours live in a TOML config file, not in the source.
-- The installed app is a bundle of readable `.py` files, so an agent can edit
+- One Tk settings window and one pystray tray on every platform.
+- The macOS build is an app bundle of readable `.py` files, so an agent can edit
   the running code directly.
 
 ## Where things live
 
 ```text
-~/Applications/serv.app/                  the app (this is what runs)
+<install>/serv.app/                       macOS app bundle (see Build below)
   Contents/MacOS/serv                     shell launcher
   Contents/Resources/pysrc/serv/*.py      the server, as plain source
   Contents/Resources/data/                stylesheet template, icons, chemistry JS
-  Contents/Resources/config/serv.toml     built-in defaults
-  Contents/Resources/config/schemes.toml  prebuilt colour schemes
-  Contents/Resources/python/              standalone CPython + dependencies
+  Contents/Resources/config/*.toml        default config, schemes, fonts, labels
+  Contents/Resources/python/              standalone CPython, Tk and dependencies
 ~/.config/serv/serv.toml                  your settings (created on first save)
-~/Library/LaunchAgents/local.serv.plist   start-at-login item
-~/Library/Logs/serv.log, serv.err.log     server output
 ```
+
+On Windows the config sits in `%APPDATA%\serv\serv.toml`; `$XDG_CONFIG_HOME` is
+honoured on Linux and macOS. The login item is a LaunchAgent on macOS, a systemd
+user unit (or an XDG autostart entry) on Linux, and the per-user Run key on
+Windows.
 
 Source checkout: `~/dev/serv/` (`src/serv/`, `data/`, `config/`, `tests/`,
 `tools/`).
 
 ## Running
 
-- The login item starts the app with `--agent`: server plus menu-bar item, no
-  window. It serves `$HOME` on the configured port.
-- Double-clicking the app starts the same thing and opens the settings window.
-  Closing that window leaves the menu-bar item running.
-- The menu-bar icon opens: Open in Browser, Copy URL, Pause/Resume, Start at
+- The login item starts the app with `--agent`: server plus tray, no window.
+- Launching the app opens the settings window as well. Closing that window
+  leaves the tray running (the window is its own process, `serv --settings`).
+- The tray menu: status, Open in Browser, Copy URL, Pause/Resume, Start at
   login, cache counters, last error, Settings…, Quit.
 
-Control it from a terminal:
-
-```sh
-launchctl kickstart -k gui/$(id -u)/local.serv   # restart after editing code
-launchctl print gui/$(id -u)/local.serv          # state and program path
-```
-
-Development runs (from the checkout, no bundle):
+From a checkout or a terminal:
 
 ```sh
 uv run serv --no-tray --port 1010 --root "$HOME"
 uv run serv --settings                          # settings window only
 uv run pytest
+launchctl kickstart -k gui/$(id -u)/local.serv   # macOS: restart the login item
+systemctl --user restart serv                    # Linux: restart the login item
 ```
 
 ## Editing the running app
 
-The bundle contains no compiled Python archive. To change behaviour:
+The macOS bundle contains no compiled Python archive. To change behaviour:
 
 1. Edit `~/Applications/serv.app/Contents/Resources/pysrc/serv/*.py`.
 2. Restart: `launchctl kickstart -k gui/$(id -u)/local.serv`.
@@ -66,13 +62,13 @@ files, so copy edits back into the checkout if you want to keep them.
 
 ## Configuration
 
-`~/.config/serv/serv.toml` is read at startup and watched while running: save a
-change (or let the settings window save it) and the server applies it within two
-seconds, without a restart.
+`serv.toml` is read at startup and watched while running: save a change (or let
+the settings window save it) and the server applies it within two seconds,
+without a restart.
 
-Resolution order: `--config PATH`, then `$SERV_CONFIG`, then
-`~/.config/serv/serv.toml`, then the bundled defaults. Values are validated at
-startup; a bad colour or size stops the server with a clear message.
+Resolution order: `--config PATH`, then `$SERV_CONFIG`, then the user file, then
+the bundled defaults. Values are validated at startup; a bad colour or size stops
+the server with a clear message.
 
 | Section | Keys |
 | --- | --- |
@@ -84,15 +80,17 @@ startup; a bad colour or size stops the server with a clear message.
 | `type` | `reading`, `mono`, `reading_weights`, `mono_weights`, `md_size`, `md_table`, `code_size` |
 | `layout` | `md_width`, `md_gutter`, `listing_width` |
 
-The Type & Layout section picks fonts from a curated Google Fonts list
-(`config/fonts.toml`) or from the macOS font panel; a locally installed family
-skips the web-font request by leaving its `*_weights` value empty.
+The settings window is a thin shell over that file:
 
-The Colours section has a **Scheme** dropdown with
-prebuilt palettes (Tokyo Night Day, Tokyo Night, Catppuccin Latte and Mocha,
-Gruvbox Light, Nord, Solarized Light and Dark). Picking one copies its colours
-into the fields; editing any swatch afterwards switches the dropdown to
-"Custom". The schemes are data in `config/schemes.toml`, not code.
+- **General** — port, the render size limit, cache size, verbatim globs, login item.
+- **Colors** — a Scheme dropdown with eight prebuilt palettes, then one swatch per
+  colour with a plain-language label (the raw key stays as a tooltip).
+- **Type & Layout** — font pickers (curated Google Fonts or any installed family)
+  and stepped sliders for the sizes.
+
+The supporting tables are data, not code: `config/schemes.toml` (palettes),
+`config/fonts.toml` (families and their Google Fonts axis queries) and
+`config/labels.toml` (swatch names).
 
 Two rules keep big and generated files out of the renderer:
 
@@ -107,8 +105,8 @@ Two rules keep big and generated files out of the renderer:
 - Source files (`.py`, `.rs`, `.odin`, …) → a bare page with Prism
   highlighting, line numbers, wrapped lines, and `:line` / `:line:col` support
   that highlights and centres that line.
-- Directories → a grid listing with a hidden-file switch (remembered in
-  `localStorage`), sizes and modification times.
+- Directories → a grid listing with folder and file icons, a hidden-file switch
+  (remembered in `localStorage`), sizes and modification times.
 - `.odin` in a verbatim area stays `text/plain` instead of downloading.
 - Filed under `build/` (or any `no_process` glob) → served untouched.
 - Two in-memory endpoints: `/__serv__/style.css` (generated from the config) and
@@ -126,22 +124,29 @@ Each plugin only adds its CDN assets to pages that actually use it.
 ## Build
 
 ```sh
-uv run python tools/build_app.py            # writes dist/serv.app
+uv run python tools/build_app.py            # macOS: writes dist/serv.app
 uv run python tools/build_app.py --install  # also copies to ~/Applications
-uv run python tools/make_tray_icon.py       # re-render the menu-bar glyph
+uv run python tools/make_tray_icon.py       # re-render tray and app icons
 ```
 
-The build embeds a uv-managed standalone CPython (`uv python install 3.14`) with
-the runtime dependencies installed into its `site-packages`, then copies the
-sources and data unmodified. The bundle is ad-hoc signed.
+The macOS build embeds a uv-managed standalone CPython (`uv python install 3.14`)
+with Tk and the runtime dependencies installed into its `site-packages`, then
+copies the sources and data unmodified. The bundle is ad-hoc signed. On Linux and
+Windows, run from a checkout (`uv run serv`) or package with your usual tool; the
+code path is identical apart from the login item and the tray backend.
 
-## Decisions that differ from the original plan
+## Decisions
 
-- **App bundle, not a single binary.** A PyInstaller onefile would hide the
-  source inside an archive. The bundle keeps readable `.py` files, which is
-  friendlier for both people and agents.
+- **Tk for the settings window, pystray for the tray.** The same window and menu
+  work on all three platforms, and neither needs AppKit, GTK or Windows APIs in
+  our code.
+- **The settings window is a separate process.** Tk and the tray both want the
+  main thread; splitting them also means the window can close while the server
+  keeps running, with changes arriving through the config watcher.
+- **macOS ships as an app bundle with plain sources**, not a single binary, so
+  the running code stays readable and editable.
 - **No vendored web libraries.** Prism, KaTeX, fonts, RDKit.js and Mermaid come
-  from pinned CDN versions, so the bundle stays ~100 MB instead of ~150 MB and
-  library updates do not need a rebuild.
-- **Black-and-white app icon and template menu-bar glyph.** The same geometry,
-  so the icon reads on light and dark menu bars.
+  from pinned CDN versions.
+- **Black-and-white app icon, appearance-aware tray glyph.** A black glyph on
+  light panels, a white one on dark ones, and a template image on macOS so the
+  system handles inversion.

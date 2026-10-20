@@ -1,7 +1,7 @@
 /*
  * serv stylesheet template.
  *
- * Every colour is a var(--…) reference; the :root block that defines them is
+ * Every color is a var(--…) reference; the :root block that defines them is
  * generated from config/serv.toml by src/serv/theme.py. The placeholders below
  * (${reading}, ${md_width}, …) come from the [type] and [layout] sections.
  * This file is data, not code: it is served verbatim at /__serv__/style.css.
@@ -398,14 +398,34 @@ body.listing-page h1 {
 }
 
 .directory-list .name {
-  overflow-wrap: anywhere;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
   text-decoration: none;
   line-height: 1.35;
+}
+
+.directory-list .name .label {
+  overflow-wrap: anywhere;
+}
+
+.directory-list .name .icon {
+  flex: 0 0 auto;
+  margin-top: 0.15rem;
+  color: var(--muted);
+}
+
+.directory-list .name.dir .icon {
+  color: var(--accent-directory);
 }
 
 .directory-list .meta {
   display: flex;
   gap: 0.75rem;
+  /* Push the details to the bottom of the cell, so times and sizes line up
+     across the row even when one file name wraps to two lines. */
+  margin-top: auto;
+  padding-top: 0.15rem;
   color: var(--muted);
   font-size: 0.78rem;
   font-variant-numeric: tabular-nums;

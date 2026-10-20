@@ -1,6 +1,6 @@
 """Turn the configured palette into CSS.
 
-Nothing in this module names a colour: every value comes from the Config, and
+Nothing in this module names a color: every value comes from the Config, and
 the structural rules live in ``data/style/serv.css`` with ``${name}``
 placeholders for the type and layout settings.
 

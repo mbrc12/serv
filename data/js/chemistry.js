@@ -38,7 +38,7 @@
     ['NumHeavyAtoms', 'Heavy atoms', 0],
     ['NumAromaticRings', 'Aromatic rings', 0],
     ['FractionCSP3', 'Fraction sp\u00b3', 3],
-    ['NumAtomStereoCenters', 'Stereo centres', 0]
+    ['NumAtomStereoCenters', 'Stereo centers', 0]
   ];
 
   // Every drawing option this renderer understands. Attribute names are

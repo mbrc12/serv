@@ -1,203 +1,252 @@
-"""Menu-bar status item.
+"""Tray icon, via pystray, on every platform.
 
-The HTTP server runs on a worker thread; ``NSApplication`` must own the main
-thread, so ``Tray.run()`` blocks there. Every value the menu shows comes from
-``ServerState.snapshot()``, so the tray never touches handler internals.
+pystray gives one API over NSStatusBar on macOS, the Win32 notification area on
+Windows and AppIndicator/XEmbed on Linux. The icon image is the white-with-outline
+glyph, which stays legible on light and dark panels without asking the OS.
 
-The item shows the icon alone — no port number in the menu bar — and the menu
-carries the address, counters and the settings window.
+The settings window is a separate process (``serv --settings``) because both Tk
+and the tray want the main thread; the server and this tray keep the main thread,
+and the window exits on close while the tray stays.
 """
 
 from __future__ import annotations
 
-from pathlib import Path as FilePath
+import shutil
+import subprocess
+import sys
 import threading
 import time
 import webbrowser
 
-import rumps
-from AppKit import NSBitmapImageRep, NSData, NSImage
+import pystray
+from PIL import Image
 
-from . import launchagent, ui
-from .config import Config
-from .resources import TRAY_ICON, data_path
+from . import appearance, autostart
 from .server import ServerState, Snapshot
+from .resources import TRAY_GLYPH_DARK, TRAY_GLYPH_LIGHT, data_path
 
 REFRESH_SECONDS = 2.0
-
-#: Menu-bar height is about 22 points; 18 leaves the icon on its own baseline.
-ICON_POINTS = 18
-
-#: Rasterised sizes, one per display scale, so the icon is never upscaled.
-ICON_FILES = (
-    (1, "servTemplate.png"),
-    (2, "servTemplate@2x.png"),
-    (3, "servTemplate@3x.png"),
-    (4, "servTemplate@4x.png"),
-)
+APPEARANCE_SECONDS = 10.0
 
 
-def status_image() -> NSImage:
-    """Build the status image from every rasterised scale.
+def _copy_to_clipboard(text: str) -> bool:
+    """Copy text with whatever clipboard tool the platform provides."""
+    commands: list[list[str]] = []
+    if sys.platform == "darwin":
+        commands = [["pbcopy"]]
+    elif sys.platform.startswith("win"):
+        commands = [["clip"]]
+    else:
+        for tool in ("wl-copy", "xclip", "xsel"):
+            if shutil.which(tool) is None:
+                continue
+            if tool == "xclip":
+                commands.append([tool, "-selection", "clipboard"])
+            elif tool == "xsel":
+                commands.append([tool, "--clipboard", "--input"])
+            else:
+                commands.append([tool])
+    for command in commands:
+        try:
+            subprocess.run(command, input=text.encode(), check=True, timeout=10)
+            return True
+        except (OSError, subprocess.SubprocessError):
+            continue
+    return False
 
-    Assigning each representation the same point size lets macOS pick the
-    pixels that match the display, which is what keeps the glyph sharp instead
-    of upscaling the 1x bitmap.
+
+def _macos_template_image():
+    """Return a sharp template NSImage for the macOS menu bar.
+
+    pystray resizes whatever image it is given to the status bar thickness (22
+    pixels), which is soft on a Retina display. This builds an 18-point image from
+    the 2x and 4x glyphs and marks it as a template, so macOS draws the right
+    number of pixels and inverts it for dark menu bars on its own.
     """
-    image = NSImage.alloc().initWithSize_((ICON_POINTS, ICON_POINTS))
-    for _, name in ICON_FILES:
-        path = data_path(TRAY_ICON.parent / name)
+    from AppKit import NSBitmapImageRep, NSData, NSImage
+
+    image = NSImage.alloc().initWithSize_((18, 18))
+    for scale in (2, 4):
+        path = data_path(f"tray/servTemplate@{scale}x.png")
         if not path.is_file():
             continue
-        data = NSData.dataWithContentsOfFile_(str(path))
-        if data is None:
+        rep = NSBitmapImageRep.imageRepWithData_(
+            NSData.dataWithContentsOfFile_(str(path))
+        )
+        if rep is None:
             continue
-        representation = NSBitmapImageRep.imageRepWithData_(data)
-        if representation is None:
-            continue
-        representation.setSize_((ICON_POINTS, ICON_POINTS))
-        image.addRepresentation_(representation)
+        rep.setSize_((18, 18))
+        image.addRepresentation_(rep)
     image.setTemplate_(True)
     return image
 
 
-def _copy_to_clipboard(text: str) -> None:
-    """Put text on the system pasteboard."""
-    from AppKit import NSPasteboard, NSPasteboardTypeString
+def _apply_macos_template(icon, attempts: int = 50) -> None:
+    """Replace pystray's scaled bitmap once the status item is on screen."""
+    import time as clock
 
-    pasteboard = NSPasteboard.generalPasteboard()
-    pasteboard.clearContents()
-    pasteboard.setString_forType_(text, NSPasteboardTypeString)
+    for _ in range(attempts):
+        button = getattr(getattr(icon, "_status_item", None), "button", lambda: None)()
+        if button is not None and button.image() is not None:
+            button.setImage_(_macos_template_image())
+            return
+        clock.sleep(0.1)
+
+
+def tray_image() -> Image.Image:
+    """Return the glyph that matches the current menu bar or taskbar."""
+    path = data_path(TRAY_GLYPH_DARK if appearance.is_dark() else TRAY_GLYPH_LIGHT)
+    return Image.open(path)
+
+
+def _settings_command() -> list[str]:
+    """Return the command that opens the settings window."""
+    return [*autostart.base_command(), "--settings"]
+
+
+def open_settings() -> None:
+    """Open the settings window in its own process."""
+    subprocess.Popen(_settings_command(), close_fds=True)
 
 
 def _error_line(snapshot: Snapshot) -> str:
     if not snapshot.last_error:
         return "No errors"
     when = time.strftime("%H:%M", time.localtime(snapshot.last_error_time or 0))
-    message = snapshot.last_error
-    return f"{when} · {message[:60]}"
+    return f"{when} · {snapshot.last_error[:60]}"
 
 
 class Tray:
-    """A rumps status item that reflects and controls one server."""
+    """A pystray icon that reflects and controls one running server."""
 
-    def __init__(self, state: ServerState, url: str, server, show_settings: bool = False) -> None:
+    def __init__(self, state: ServerState, url: str, server) -> None:
         self.state = state
         self.url = url
         self.server = server
-        self.app = rumps.App(
+        self._stop_refresh = threading.Event()
+        self._dark = appearance.is_dark()
+        self.icon = pystray.Icon(
             "serv",
-            title=None,
-            icon=str(data_path(TRAY_ICON)),
-            template=True,
-            quit_button=None,
+            icon=tray_image(),
+            title="serv",
+            menu=pystray.Menu(
+                pystray.MenuItem(self._status_text, None, enabled=False),
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem("Open in Browser", self._open, default=True),
+                pystray.MenuItem("Copy URL", self._copy),
+                pystray.MenuItem(
+                    lambda _item: "Resume" if self.state.snapshot().paused else "Pause",
+                    self._toggle_pause,
+                ),
+                pystray.MenuItem(
+                    "Start at login",
+                    self._toggle_login,
+                    checked=lambda _item: autostart.is_installed(),
+                ),
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem(self._cache_text, None, enabled=False),
+                pystray.MenuItem(self._error_text, None, enabled=False),
+                pystray.Menu.SEPARATOR,
+                pystray.MenuItem("Settings…", self._open_settings),
+                pystray.MenuItem("Quit serv", self._quit),
+            ),
         )
-        # Replace rumps' single-bitmap image with the multi-scale one.
-        self.app._icon_nsimage = status_image()
 
-        self.status_item = rumps.MenuItem("Starting…", callback=None)
-        self.pause_item = rumps.MenuItem("Pause", callback=self._toggle_pause)
-        self.cache_item = rumps.MenuItem("", callback=None)
-        self.error_item = rumps.MenuItem("", callback=None)
-        self.login_item = rumps.MenuItem(
-            "Start at login", callback=self._toggle_login
-        )
-        self.login_item.state = launchagent.is_installed()
-        self.app.menu = [
-            self.status_item,
-            None,
-            rumps.MenuItem("Open in Browser", callback=self._open),
-            rumps.MenuItem("Copy URL", callback=self._copy),
-            self.pause_item,
-            self.login_item,
-            None,
-            self.cache_item,
-            self.error_item,
-            None,
-            rumps.MenuItem("Settings…", callback=self._open_settings),
-            None,
-            rumps.MenuItem("Quit serv", callback=self._quit),
-        ]
-        self.settings_window = None
-        self.timer = rumps.Timer(self._refresh, REFRESH_SECONDS)
-        self.timer.start()
-        if show_settings:
-            # The window is opened once the run loop is up, so AppKit is ready.
-            self.launch_timer = rumps.Timer(self._open_on_launch, 0.4)
-            self.launch_timer.start()
-        self._refresh(None)
+    # ------------------------------------------------------------- labels
 
-    def _open_on_launch(self, timer) -> None:
-        timer.stop()
-        self._open_settings(None)
-        ui.ask_start_at_login_if_needed()
-
-    # ------------------------------------------------------------- actions
-
-    def _open(self, _sender) -> None:
-        webbrowser.open(self.url)
-
-    def _copy(self, _sender) -> None:
-        _copy_to_clipboard(self.url)
-
-    def _toggle_pause(self, _sender) -> None:
-        self.state.toggle_paused()
-        self._refresh(None)
-
-    def _toggle_login(self, _sender) -> None:
-        try:
-            if launchagent.is_installed():
-                launchagent.uninstall()
-            else:
-                launchagent.install(FilePath.home())
-        except Exception as error:  # noqa: BLE001 - report, never crash the server
-            rumps.alert("Could not update the login item", str(error))
-        self.login_item.state = launchagent.is_installed()
-        self._refresh(None)
-
-    def _open_settings(self, _sender) -> None:
-        self.settings_window = ui.show_settings(self.state.config, self._apply_config)
-
-    def _apply_config(self, config: Config) -> None:
-        self.state.apply_config(config)
-
-    def _quit(self, _sender) -> None:
-        self.timer.stop()
-        threading.Thread(target=self.server.shutdown, daemon=True).start()
-        rumps.quit_application()
-
-    # ------------------------------------------------------------ refresh
-
-    def _refresh(self, _timer) -> None:
+    def _status_text(self, _item=None) -> str:
         snapshot = self.state.snapshot()
         state_word = "paused" if snapshot.paused else "serving"
-        self.status_item.title = f"{state_word} · {self.url} · {snapshot.requests} requests"
-        self.pause_item.title = "Resume" if snapshot.paused else "Pause"
-        self.login_item.state = launchagent.is_installed()
-        self.cache_item.title = (
+        return f"{state_word} · {self.url} · {snapshot.requests} requests"
+
+    def _cache_text(self, _item=None) -> str:
+        snapshot = self.state.snapshot()
+        return (
             f"{snapshot.cached_pages} pages cached · "
             f"{snapshot.cache_hits} hits / {snapshot.cache_misses} misses"
         )
-        self.error_item.title = _error_line(snapshot)
+
+    def _error_text(self, _item=None) -> str:
+        return _error_line(self.state.snapshot())
+
+    # ------------------------------------------------------------ actions
+
+    def _open(self, _icon=None, _item=None) -> None:
+        webbrowser.open(self.url)
+
+    def _copy(self, _icon=None, _item=None) -> None:
+        _copy_to_clipboard(self.url)
+
+    def _toggle_pause(self, _icon=None, _item=None) -> None:
+        self.state.toggle_paused()
+        self._refresh()
+
+    def _toggle_login(self, _icon=None, _item=None) -> None:
+        try:
+            if autostart.is_installed():
+                autostart.uninstall()
+            else:
+                autostart.install()
+        except Exception as error:  # noqa: BLE001 - report, never crash the server
+            self.state.note_error(f"login item: {error}")
+        self._refresh()
+
+    def _open_settings(self, _icon=None, _item=None) -> None:
+        open_settings()
+
+    def _quit(self, _icon=None, _item=None) -> None:
+        self._stop_refresh.set()
+        self.icon.stop()
+        threading.Thread(target=self.server.shutdown, daemon=True).start()
+
+    # ------------------------------------------------------------ refresh
+
+    def _refresh(self) -> None:
+        try:
+            self.icon.update_menu()
+        except Exception:  # noqa: BLE001 - the icon may already be gone
+            pass
+
+    def _refresh_loop(self) -> None:
+        waited = 0.0
+        while not self._stop_refresh.wait(REFRESH_SECONDS):
+            self._refresh()
+            waited += REFRESH_SECONDS
+            if waited >= APPEARANCE_SECONDS:
+                waited = 0.0
+                self._follow_appearance()
+
+    def _follow_appearance(self) -> None:
+        """Swap the glyph when the system switches between light and dark."""
+        if sys.platform == "darwin":
+            return  # the template image already follows the menu bar
+        dark = appearance.is_dark()
+        if dark == self._dark:
+            return
+        self._dark = dark
+        try:
+            self.icon.icon = tray_image()
+        except Exception:  # noqa: BLE001 - the icon may already be gone
+            pass
 
     def run(self) -> None:
-        """Block on the main thread until the user quits."""
-        self.app.run()
-
-
-def run_tray(state: ServerState, url: str, server, show_settings: bool = False) -> bool:
-    """Show the status item, returning False when the environment has no GUI.
-
-    A launchd-started agent can lack a window server connection; in that case
-    rumps raises before any item appears and the caller falls back to serving
-    without a tray.
-    """
-    try:
-        Tray(state, url, server, show_settings).run()
-    except Exception as error:  # noqa: BLE001 - GUI absence is not fatal
-        print(
-            f"tray unavailable ({type(error).__name__}: {error}); serving without it",
-            flush=True,
+        """Run the tray on the main thread until it is quit."""
+        refresh = threading.Thread(
+            target=self._refresh_loop, name="serv-tray-refresh", daemon=True
         )
+        refresh.start()
+        if sys.platform == "darwin":
+            threading.Thread(
+                target=_apply_macos_template, args=(self.icon,), daemon=True
+            ).start()
+        self.icon.run()
+
+
+def run_tray(state: ServerState, url: str, server) -> bool:
+    """Show the tray, returning False when this session cannot display one."""
+    try:
+        Tray(state, url, server).run()
+    except Exception as error:  # noqa: BLE001 - headless sessions have no tray
+        print(f"tray unavailable ({type(error).__name__}: {error}); serving without it", flush=True)
         return False
     return True

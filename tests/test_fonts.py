@@ -1,4 +1,4 @@
-"""Font catalogue and the weights query used for Google Fonts."""
+"""Font catalog and the weights query used for Google Fonts."""
 
 from __future__ import annotations
 
@@ -11,12 +11,12 @@ from serv.config import ConfigError, load_config, parse_config
 from serv.theme import stylesheet
 
 
-def test_catalogue_has_both_roles() -> None:
-    catalogue = fonts.load_fonts()
-    assert set(catalogue) == {"reading", "mono"}
+def test_catalog_has_both_roles() -> None:
+    catalog = fonts.load_fonts()
+    assert set(catalog) == {"reading", "mono"}
     for role in ("reading", "mono"):
-        assert len(catalogue[role]) >= 5
-        assert all(choice.name and choice.weights for choice in catalogue[role])
+        assert len(catalog[role]) >= 5
+        assert all(choice.name and choice.weights for choice in catalog[role])
 
 
 def test_weights_lookup_is_case_insensitive() -> None:
@@ -44,7 +44,7 @@ def test_local_font_skips_its_import() -> None:
     assert "font-family: 'Helvetica Neue', Georgia" in css
 
 
-def test_missing_weights_are_derived_from_the_catalogue() -> None:
+def test_missing_weights_are_derived_from_the_catalog() -> None:
     config = load_config()
     raw = {
         "server": {},

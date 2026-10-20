@@ -96,7 +96,7 @@ class ServerState:
         """Swap in a new configuration, e.g. after the settings window saved.
 
         The renderer, stylesheet and no-process rules are rebuilt and the render
-        cache is dropped, because cached pages carry the old colours. The
+        cache is dropped, because cached pages carry the old colors. The
         listening port cannot change here; it is bound at startup.
         """
         renderer = MarkdownRenderer(config)

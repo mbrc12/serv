@@ -1,305 +1,148 @@
-"""A small native settings window, plus the start-at-login question.
+"""Settings window, built with Tk.
 
-Built with AppKit directly (PyObjC ships with rumps, so no extra dependency).
-The window edits every value in ``~/.config/serv/serv.toml`` and applies the
-result to a running server without a restart.
+Tk runs everywhere, so this one window serves macOS, Linux and Windows. It is a
+separate process from the server (``serv --settings``): both Tk and the tray want
+the main thread, and splitting them also means the window can be closed without
+stopping the server -- the running instance picks up the saved file through its
+config watcher.
 
-Widgets are the modern macOS ones: a segmented control for the sections, rounded
-cards for grouping, list rows instead of a raw text area for the glob patterns,
-and rounded colour swatches that open the system colour panel.
-
-Only the port needs a restart to take effect, because the listening socket is
-bound at startup; the window says so instead of pretending otherwise.
+Layout mirrors the old AppKit window: a header, three sections, and a footer that
+saves. Values are validated with the same ``parse_config`` the server uses, so a
+mistake is reported here rather than at the next start.
 """
 
 from __future__ import annotations
 
 from dataclasses import fields
-import re
+import os
 from pathlib import Path
+import subprocess
+import sys
+import tkinter as tk
+from tkinter import colorchooser, font as tkfont, messagebox, ttk
 from typing import Callable
 
-import objc
-from AppKit import (
-    NSApplication,
-    NSApplicationActivationPolicyAccessory,
-    NSAlert,
-    NSBackingStoreBuffered,
-    NSBezelStyleRounded,
-    NSBezierPath,
-    NSBox,
-    NSBoxCustom,
-    NSButton,
-    NSColor,
-    NSColorPanel,
-    NSColorSpace,
-    NSFont,
-    NSFontManager,
-    NSImage,
-    NSImageView,
-    NSImageScaleProportionallyUpOrDown,
-    NSInsetRect,
-    NSLayoutConstraint,
-    NSMakeRect,
-    NSPopUpButton,
-    NSSegmentedControl,
-    NSSegmentStyleAutomatic,
-    NSTextField,
-    NSView,
-    NSWindow,
-    NSWindowStyleMaskClosable,
-    NSWindowStyleMaskTitled,
-    NSWorkspace,
-)
-from Foundation import NSObject
-
-from . import fonts, launchagent, schemes
+from . import appearance, autostart, fonts, labels, schemes
+from .colors import css_color, hex_for_picker, parse_css_color
 from .config import Config, ConfigError, load_config, parse_config, save_config
 from .locations import user_config_path
-from .resources import data_dir
+from .resources import TRAY_GLYPH_DARK, TRAY_GLYPH_LIGHT, data_path
+from .units import format_length, slider_for, snap
 
-WINDOW_WIDTH = 620
-WINDOW_HEIGHT = 500
-MARGIN = 20
-CARD_TOP = WINDOW_HEIGHT - 118
-CARD_HEIGHT = CARD_TOP - 70
-CARD_INSET = 18
-
-#: Label of the popup entry that opens the system font panel.
+WINDOW_WIDTH = 660
+MIN_WINDOW_HEIGHT = 420
+SWATCH_COLUMNS = 4
 SYSTEM_FONT_ITEM = "System font…"
 
-#: Called with the saved config so a running server can apply it.
+#: Called with the saved config so an in-process server can apply it.
 SaveCallback = Callable[[Config], None]
 
 
-# --------------------------------------------------------------- colour helpers
-
-_HEX = re.compile(r"^#([0-9a-fA-F]{3,8})$")
-_RGBA = re.compile(r"^rgba?\(([^)]*)\)$")
+# ------------------------------------------------------------------- helpers
 
 
-def colour_from_css(value: str) -> NSColor:
-    """Turn a CSS colour from the config into an NSColor for a swatch."""
-    match = _HEX.match(value.strip())
-    if match:
-        digits = match.group(1)
-        if len(digits) == 3:
-            digits = "".join(character * 2 for character in digits)
-        if len(digits) == 6:
-            digits += "ff"
-        return NSColor.colorWithSRGBRed_green_blue_alpha_(
-            int(digits[0:2], 16) / 255,
-            int(digits[2:4], 16) / 255,
-            int(digits[4:6], 16) / 255,
-            int(digits[6:8], 16) / 255,
-        )
-    match = _RGBA.match(value.strip())
-    if match:
-        parts = [part.strip() for part in match.group(1).split(",")]
-        numbers = [float(part) for part in parts[:3]]
-        alpha = float(parts[3]) if len(parts) > 3 else 1.0
-        return NSColor.colorWithSRGBRed_green_blue_alpha_(
-            numbers[0] / 255, numbers[1] / 255, numbers[2] / 255, alpha
-        )
-    if value.strip() == "transparent":
-        return NSColor.colorWithSRGBRed_green_blue_alpha_(0, 0, 0, 0)
-    return NSColor.blackColor()
+def _muted_color(root: tk.Misc) -> str:
+    """Return a system-ish secondary text color, avoiding hardcoded grays."""
+    for name in ("systemSecondaryLabelColor", "gray50"):
+        try:
+            root.winfo_rgb(name)
+        except tk.TclError:
+            continue
+        return name
+    return "gray"
 
 
-def css_from_colour(colour: NSColor) -> str:
-    """Turn an NSColor back into the shortest accurate CSS colour."""
-    converted = colour.colorUsingColorSpace_(NSColorSpace.sRGBColorSpace())
-    if converted is None:
-        return "#000000"
-    red, green, blue, alpha = (
-        converted.redComponent(),
-        converted.greenComponent(),
-        converted.blueComponent(),
-        converted.alphaComponent(),
+def _bold(font: tkfont.Font, size: int | None = None) -> tkfont.Font:
+    copy = font.copy()
+    copy.configure(weight="bold")
+    if size is not None:
+        copy.configure(size=size)
+    return copy
+
+
+def _reveal(path: Path) -> None:
+    """Show a file in the platform's file manager."""
+    if sys.platform == "darwin":
+        subprocess.Popen(["open", "-R", str(path)])
+    elif sys.platform.startswith("win"):
+        os.startfile(str(path))  # type: ignore[attr-defined]
+    else:
+        subprocess.Popen(["xdg-open", str(path.parent)])
+
+
+def _center(window: tk.Tk | tk.Toplevel, width: int, height: int) -> None:
+    screen_width = window.winfo_screenwidth()
+    screen_height = window.winfo_screenheight()
+    window.geometry(f"{width}x{height}+{(screen_width - width) // 2}+{max((screen_height - height) // 3, 0)}")
+
+
+#: Border of a color swatch: UI chrome, not part of the served palette.
+SWATCH_BORDER = "gray60"
+
+
+def _draw_swatch(canvas: tk.Canvas, color: str) -> None:
+    """Paint a rounded color patch inside a small canvas."""
+    canvas.delete("all")
+    radius = 5
+    width = int(canvas["width"])
+    height = int(canvas["height"])
+    points = [
+        radius, 1, width - radius, 1, width - 1, 1, width - 1, radius,
+        width - 1, height - radius, width - 1, height - 1, width - radius, height - 1,
+        radius, height - 1, 1, height - 1, 1, height - radius, 1, radius, 1, 1,
+    ]
+    canvas.create_polygon(
+        points, smooth=True, splinesteps=12, fill=color, outline=SWATCH_BORDER
     )
-    if alpha <= 0.004:
-        return "transparent"
-    if alpha >= 0.996:
-        return (
-            f"#{int(round(red * 255)):02x}"
-            f"{int(round(green * 255)):02x}"
-            f"{int(round(blue * 255)):02x}"
-        )
-    return (
-        f"rgba({int(round(red * 255))}, {int(round(green * 255))}, "
-        f"{int(round(blue * 255))}, {round(alpha, 3)})"
-    )
 
 
-# --------------------------------------------------------------------- widgets
+# -------------------------------------------------------------------- window
 
 
-class FlippedView(NSView):
-    """A view whose origin is the top-left corner, so rows count downwards."""
+class SettingsWindow:
+    """The settings window and everything it needs to build itself."""
 
-    def isFlipped(self) -> bool:  # noqa: N802 - AppKit naming
-        return True
+    def __init__(self, config: Config, callback: SaveCallback | None = None) -> None:
+        self.config = config
+        self.callback = callback
+        self.values = self._config_values(config)
+        self.root = tk.Tk()
+        self.root.title("serv settings")
+        self.root.resizable(False, False)
+        self._centered = False
+        self._widgets: dict[str, ttk.Widget] = {}
+        self.text_vars: dict[str, tk.StringVar] = {}
+        self.slider_vars: dict[str, tk.DoubleVar] = {}
+        self.slider_labels: dict[str, tk.StringVar] = {}
+        self.swatches: dict[str, tk.Canvas] = {}
+        self.glob_entries: list[tk.Entry] = []
+        self.login_var = tk.IntVar(value=1 if autostart.is_installed() else 0)
+        self.theme = ttk.Style()
+        self.base_font = tkfont.nametofont("TkDefaultFont")
+        self.muted = _muted_color(self.root)
+        self._build()
+        self._resize_to_content()
 
+    def _resize_to_content(self, _event=None) -> None:
+        """Size the window to the visible section, keeping a single width.
 
-class SwatchView(NSView):
-    """A rounded colour patch that opens the system colour panel when clicked."""
-
-    def initWithFrame_colour_(self, rect, colour: NSColor):
-        self = objc.super(SwatchView, self).initWithFrame_(rect)
-        if self is None:
-            return None
-        self._colour = colour
-        return self
-
-    def setOnChange_(self, callback) -> None:  # noqa: N802 - AppKit naming
-        self._on_change = callback
-
-    def setColour_(self, colour: NSColor) -> None:  # noqa: N802 - AppKit naming
-        self._colour = colour
-        self.setNeedsDisplay_(True)
-
-    def colour(self) -> NSColor:
-        return self._colour
-
-    def drawRect_(self, rect) -> None:  # noqa: N802 - AppKit naming
-        bounds = NSInsetRect(self.bounds(), 0.5, 0.5)
-        path = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(bounds, 5.0, 5.0)
-        # Transparent and translucent colours sit on a light plate so the alpha
-        # is visible instead of looking like a hole in the window.
-        NSColor.whiteColor().setFill()
-        path.fill()
-        self._colour.setFill()
-        path.fill()
-        NSColor.separatorColor().setStroke()
-        path.setLineWidth_(1.0)
-        path.stroke()
-
-    def mouseDown_(self, event) -> None:  # noqa: N802 - AppKit naming
-        panel = NSColorPanel.sharedColorPanel()
-        panel.setColor_(self._colour)
-        panel.setTarget_(self)
-        panel.setAction_("panelChanged:")
-        panel.orderFront_(None)
-
-    def panelChanged_(self, sender) -> None:  # noqa: N802 - AppKit naming
-        self.setColour_(sender.color())
-        if getattr(self, "_on_change", None) is not None:
-            self._on_change()
-
-    def acceptsFirstMouse_(self, event) -> bool:  # noqa: N802 - AppKit naming
-        return True
-
-    def isFlipped(self) -> bool:  # noqa: N802 - AppKit naming
-        return True
-
-
-class IndexedButton(NSButton):
-    """A push button that remembers which row it belongs to."""
-
-    def initWithTitle_row_target_action_(self, title, row, target, action):
-        self = objc.super(IndexedButton, self).initWithFrame_(NSMakeRect(0, 0, 26, 24))
-        if self is None:
-            return None
-        self._row = row
-        self.setTitle_(title)
-        self.setBezelStyle_(NSBezelStyleRounded)
-        self.setTarget_(target)
-        self.setAction_(action)
-        return self
-
-    def row(self) -> int:
-        return self._row
-
-
-def _label(text: str, size: float = 12.0, bold: bool = False, muted: bool = False) -> NSTextField:
-    """Return a non-editable label."""
-    view = NSTextField.labelWithString_(text)
-    view.setFont_(NSFont.boldSystemFontOfSize_(size) if bold else NSFont.systemFontOfSize_(size))
-    if muted:
-        view.setTextColor_(NSColor.secondaryLabelColor())
-    return view
-
-
-def _field(value: str, width: int = 120) -> NSTextField:
-    """Return a single-line text field with a fixed width."""
-    control = NSTextField.alloc().initWithFrame_(NSMakeRect(0, 0, width, 22))
-    control.setStringValue_(value)
-    control.setFont_(NSFont.systemFontOfSize_(12))
-    control.setAlignment_(1)  # right-aligned values read better in a form
-    control.setTranslatesAutoresizingMaskIntoConstraints_(False)
-    NSLayoutConstraint.activateConstraints_(
-        [
-            control.widthAnchor().constraintEqualToConstant_(width),
-            control.heightAnchor().constraintEqualToConstant_(22),
-        ]
-    )
-    return control
-
-
-def _button(title: str, target, action: str, width: int = 90) -> NSButton:
-    """Return a standard push button."""
-    control = NSButton.buttonWithTitle_target_action_(title, target, action)
-    control.setBezelStyle_(NSBezelStyleRounded)
-    control.setFrame_(NSMakeRect(0, 0, width, 26))
-    return control
-
-
-def _card(frame) -> NSBox:
-    """Return a rounded grouping card."""
-    box = NSBox.alloc().initWithFrame_(frame)
-    box.setBoxType_(NSBoxCustom)
-    box.setBorderWidth_(1)
-    box.setBorderColor_(NSColor.separatorColor())
-    box.setCornerRadius_(10)
-    box.setFillColor_(NSColor.controlBackgroundColor())
-    box.setTitlePosition_(0)
-    box.setTitle_("")
-    # The card lays its rows out top-down like a form, so its content view has
-    # to be flipped; NSBox's own content view starts at the bottom-left.
-    box.setContentView_(
-        FlippedView.alloc().initWithFrame_(box.contentView().frame())
-    )
-    return box
-
-
-def _app_icon() -> NSImage | None:
-    """Return the menu-bar glyph, used as the window's little logo."""
-    candidate = data_dir() / "tray" / "servTemplate@4x.png"
-    if not candidate.is_file():
-        return None
-    return NSImage.alloc().initWithContentsOfFile_(str(candidate))
-
-
-# ------------------------------------------------------------------- the window
-
-
-class SettingsController(NSObject):
-    """Owns the settings window and applies edits to the config file."""
-
-    def initWithConfig_callback_(self, config: Config, callback: SaveCallback | None):
-        self = objc.super(SettingsController, self).init()
-        if self is None:
-            return None
-        self._config = config
-        self._callback = callback
-        self._fields: dict[str, NSTextField] = {}
-        self._swatches: dict[str, SwatchView] = {}
-        self._glob_fields: list[NSTextField] = []
-        self._font_popups: dict[str, NSPopUpButton] = {}
-        self._font_role: str | None = None
-        self._login_checkbox = None
-        self._standalone = False
-        # Draft values survive a section switch, so a tab change never loses an
-        # edit made in the tab being left.
-        self._draft: dict[str, str] = self._values_from_config(config)
-        self._section = 0
-        self._build_window()
-        self._window.setDelegate_(self)
-        return self
+        A notebook normally keeps the height of its tallest page, which leaves a
+        large blank area under the shorter ones. Fitting the pane per section
+        keeps every tab tight, and the window grows or shrinks when tabs change.
+        """
+        self.root.update_idletasks()
+        page = self.notebook.nametowidget(self.notebook.select())
+        self.notebook.configure(height=page.winfo_reqheight())
+        self.root.update_idletasks()
+        height = max(self.root.winfo_reqheight(), MIN_WINDOW_HEIGHT)
+        self.root.geometry(f"{WINDOW_WIDTH}x{height}")
+        if self._centered:
+            return
+        self._centered = True
+        _center(self.root, WINDOW_WIDTH, height)
 
     @staticmethod
-    @objc.python_method
-    def _values_from_config(config: Config) -> dict[str, str]:
+    def _config_values(config: Config) -> dict[str, str]:
         values: dict[str, str] = {
             "server.port": str(config.server.port),
             "server.max_render_bytes": str(config.server.max_render_bytes),
@@ -321,481 +164,489 @@ class SettingsController(NSObject):
 
     # ------------------------------------------------------------- building
 
-    @objc.python_method
-    def _build_window(self) -> None:
-        self._window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-            NSMakeRect(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT),
-            NSWindowStyleMaskTitled | NSWindowStyleMaskClosable,
-            NSBackingStoreBuffered,
-            False,
+    def _build(self) -> None:
+        self._build_header()
+        notebook = ttk.Notebook(self.root)
+        notebook.pack(fill="both", expand=True, padx=16, pady=(2, 6))
+
+        general = ttk.Frame(notebook, padding=(18, 16))
+        colors = ttk.Frame(notebook, padding=(18, 16))
+        typography = ttk.Frame(notebook, padding=(18, 16))
+        notebook.add(general, text="General")
+        notebook.add(colors, text="Colors")
+        notebook.add(typography, text="Type & Layout")
+        self.notebook = notebook
+        notebook.bind("<<NotebookTabChanged>>", self._resize_to_content)
+
+        self._build_general(general)
+        self._build_colors(colors)
+        self._build_typography(typography)
+        self._build_footer()
+
+    def _build_header(self) -> None:
+        header = ttk.Frame(self.root, padding=(18, 14, 18, 6))
+        header.pack(fill="x")
+        try:
+            glyph = TRAY_GLYPH_DARK if appearance.is_dark() else TRAY_GLYPH_LIGHT
+            # One image pixel is one device pixel in Tk, so pick the asset that
+            # fills a 22-point box at this display's density instead of scaling.
+            density = round(self.root.winfo_fpixels("1i") / 72)
+            image = tk.PhotoImage(file=str(data_path(glyph)))
+            if density == 1:
+                image = image.subsample(2)
+            self._icon = image  # keep a reference or Tk drops it
+            ttk.Label(header, image=image).grid(row=0, column=0, rowspan=2, padx=(0, 12))
+        except tk.TclError:
+            pass
+        ttk.Label(header, text="serv", font=_bold(self.base_font, 15)).grid(
+            row=0, column=1, sticky="sw"
         )
-        self._window.setTitle_("serv settings")
-        self._window.setReleasedWhenClosed_(False)
-        self._window.center()
-        content = self._window.contentView()
+        ttk.Label(
+            header,
+            text=f"Local file server · http://localhost:{self.config.server.port}/",
+            foreground=self.muted,
+        ).grid(row=1, column=1, sticky="nw")
 
-        content.addSubview_(self._build_header())
-        content.addSubview_(self._build_sections())
-        self._card = _card(NSMakeRect(MARGIN, 70, WINDOW_WIDTH - 2 * MARGIN, CARD_HEIGHT))
-        content.addSubview_(self._card)
-        self._render_section()
-        content.addSubview_(self._build_footer())
-
-    @objc.python_method
-    def _build_header(self) -> NSView:
-        header = NSView.alloc().initWithFrame_(
-            NSMakeRect(0, WINDOW_HEIGHT - 76, WINDOW_WIDTH, 76)
-        )
-        icon = _app_icon()
-        text_left = MARGIN
-        if icon is not None:
-            view = NSImageView.alloc().initWithFrame_(NSMakeRect(MARGIN, 22, 30, 30))
-            view.setImage_(icon)
-            view.setImageScaling_(NSImageScaleProportionallyUpOrDown)
-            header.addSubview_(view)
-            text_left = MARGIN + 42
-
-        title = _label("serv", size=15, bold=True)
-        title.setFrame_(NSMakeRect(text_left, 38, WINDOW_WIDTH - text_left - MARGIN, 20))
-        subtitle = _label(
-            f"Local file server · http://localhost:{self._config.server.port}/",
-            size=11,
-            muted=True,
-        )
-        subtitle.setFrame_(NSMakeRect(text_left, 22, WINDOW_WIDTH - text_left - MARGIN, 16))
-        header.addSubview_(title)
-        header.addSubview_(subtitle)
-        return header
-
-    @objc.python_method
-    def _build_sections(self) -> NSSegmentedControl:
-        control = NSSegmentedControl.alloc().initWithFrame_(
-            NSMakeRect(MARGIN, CARD_TOP + 12, 300, 24)
-        )
-        control.setSegmentCount_(3)
-        for index, title in enumerate(("General", "Colours", "Type & Layout")):
-            control.setLabel_forSegment_(title, index)
-            control.setWidth_forSegment_(100 if index == 0 else (84 if index == 1 else 116), index)
-        control.setSegmentStyle_(NSSegmentStyleAutomatic)
-        control.setSelectedSegment_(0)
-        control.setTarget_(self)
-        control.setAction_("sectionChanged:")
-        return control
-
-    @objc.python_method
-    def _build_footer(self) -> NSView:
-        footer = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, WINDOW_WIDTH, 62))
-        reveal = _button("Show config file", self, "reveal:", 150)
-        reveal.setFrame_(NSMakeRect(MARGIN, 18, 150, 28))
-        footer.addSubview_(reveal)
-
-        cancel = _button("Cancel", self, "cancel:", 86)
-        cancel.setKeyEquivalent_("\x1b")
-        cancel.setFrame_(NSMakeRect(WINDOW_WIDTH - 194, 18, 86, 28))
-        footer.addSubview_(cancel)
-
-        save = _button("Save", self, "save:", 84)
-        save.setKeyEquivalent_("\r")
-        save.setFrame_(NSMakeRect(WINDOW_WIDTH - 100, 18, 84, 28))
-        footer.addSubview_(save)
-        return footer
-
-    # --------------------------------------------------------------- sections
-
-    @objc.python_method
-    def _clear_card(self) -> None:
-        for view in list(self._card.contentView().subviews()):
-            view.removeFromSuperview()
-        self._fields.clear()
-        self._swatches.clear()
-        self._glob_fields.clear()
-
-    @objc.python_method
-    def _render_section(self) -> None:
-        self._clear_card()
-        if self._section == 0:
-            self._render_general()
-        elif self._section == 1:
-            self._render_colours()
-        else:
-            self._render_type()
-
-    @objc.python_method
-    def _render_general(self) -> None:
-        card = self._card.contentView()
-        width = WINDOW_WIDTH - 2 * MARGIN
+    def _build_general(self, parent: ttk.Frame) -> None:
+        parent.columnconfigure(1, weight=1)
         rows = (
-            ("server.port", "Port", 96),
-            ("server.max_render_bytes", "Largest rendered file (bytes)", 120),
-            ("cache.entries", "Cached pages", 96),
+            ("server.port", "Port"),
+            ("server.max_render_bytes", "Largest rendered file (bytes)"),
+            ("cache.entries", "Cached pages"),
         )
-        y = CARD_INSET
-        for key, caption, field_width in rows:
-            label = _label(caption)
-            label.setFrame_(NSMakeRect(CARD_INSET, y + 3, 240, 18))
-            field = _field(self._draft[key], field_width)
-            field.setFrame_(NSMakeRect(width - CARD_INSET - field_width, y, field_width, 22))
-            card.addSubview_(label)
-            card.addSubview_(field)
-            self._fields[key] = field
-            y += 30
+        for index, (key, caption) in enumerate(rows):
+            ttk.Label(parent, text=caption).grid(row=index, column=0, sticky="w", pady=4)
+            variable = tk.StringVar(value=self.values[key])
+            entry = ttk.Entry(parent, textvariable=variable, width=14, justify="right")
+            entry.grid(row=index, column=1, sticky="w", pady=4)
+            self.text_vars[key] = variable
 
-        heading = _label("Served verbatim", size=11, bold=True, muted=True)
-        heading.setFrame_(NSMakeRect(CARD_INSET, y + 10, 200, 14))
-        hint = _label("matched files are sent as-is, without rendering", size=11, muted=True)
-        hint.setFrame_(NSMakeRect(CARD_INSET + 108, y + 10, 360, 14))
-        card.addSubview_(heading)
-        card.addSubview_(hint)
-        y += 30
+        heading_row = len(rows)
+        ttk.Label(parent, text="Served verbatim", font=_bold(self.base_font)).grid(
+            row=heading_row, column=0, sticky="w", pady=(16, 0)
+        )
+        ttk.Label(
+            parent,
+            text="matched files are sent as-is, without rendering",
+            foreground=self.muted,
+        ).grid(row=heading_row + 1, column=0, columnspan=2, sticky="w")
 
-        patterns = [line for line in self._draft["server.no_process"].splitlines() if line.strip()]
-        for pattern in patterns:
-            field = _field(pattern, width - 2 * CARD_INSET - 34)
-            field.setAlignment_(0)
-            field.setFrame_(NSMakeRect(CARD_INSET, y, width - 2 * CARD_INSET - 34, 22))
-            remove = IndexedButton.alloc().initWithTitle_row_target_action_(
-                "−", len(self._glob_fields), self, "removeGlob:"
+        self.glob_frame = ttk.Frame(parent)
+        self.glob_frame.grid(row=heading_row + 2, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        self.glob_frame.columnconfigure(0, weight=1)
+        self._render_globs()
+
+        ttk.Button(parent, text="+ Add pattern", command=self._add_glob, width=16).grid(
+            row=heading_row + 3, column=0, sticky="w", pady=(8, 0)
+        )
+        ttk.Checkbutton(
+            parent, text="Start serv at login", variable=self.login_var
+        ).grid(row=heading_row + 4, column=0, columnspan=2, sticky="w", pady=(18, 0))
+
+    def _render_globs(self) -> None:
+        for child in self.glob_frame.winfo_children():
+            child.destroy()
+        self.glob_entries = []
+        patterns = [line for line in self.values["server.no_process"].splitlines() if line.strip()]
+        for index, pattern in enumerate(patterns):
+            entry = ttk.Entry(self.glob_frame)
+            entry.insert(0, pattern)
+            entry.grid(row=index, column=0, sticky="ew", pady=2)
+            ttk.Button(
+                self.glob_frame,
+                text="−",
+                width=3,
+                command=lambda position=index: self._remove_glob(position),
+            ).grid(row=index, column=1, padx=(6, 0), pady=2)
+            self.glob_entries.append(entry)
+
+    def _add_glob(self) -> None:
+        self._stash_globs()
+        patterns = [line for line in self.values["server.no_process"].splitlines() if line.strip()]
+        patterns.append("~/")
+        self.values["server.no_process"] = "\n".join(patterns)
+        self._render_globs()
+
+    def _remove_glob(self, index: int) -> None:
+        self._stash_globs()
+        patterns = [line for line in self.values["server.no_process"].splitlines() if line.strip()]
+        if 0 <= index < len(patterns):
+            patterns.pop(index)
+        self.values["server.no_process"] = "\n".join(patterns)
+        self._render_globs()
+
+    def _stash_globs(self) -> None:
+        if self.glob_entries:
+            self.values["server.no_process"] = "\n".join(
+                entry.get() for entry in self.glob_entries
             )
-            remove.setFrame_(NSMakeRect(width - CARD_INSET - 26, y - 1, 26, 24))
-            card.addSubview_(field)
-            card.addSubview_(remove)
-            self._glob_fields.append(field)
-            y += 28
 
-        add = _button("+ Add pattern", self, "addGlob:", 120)
-        add.setFrame_(NSMakeRect(CARD_INSET, y + 2, 120, 24))
-        card.addSubview_(add)
-        y += 36
-
-        checkbox = NSButton.checkboxWithTitle_target_action_("Start serv at login", None, None)
-        checkbox.setFrame_(NSMakeRect(CARD_INSET, y + 6, 320, 22))
-        checkbox.setState_(1 if launchagent.is_installed() else 0)
-        card.addSubview_(checkbox)
-        self._login_checkbox = checkbox
-
-    @objc.python_method
-    def _render_colours(self) -> None:
-        card = self._card.contentView()
-        width = WINDOW_WIDTH - 2 * MARGIN
-        inner = width - 2 * CARD_INSET
-        columns = 5
-        cell = inner // columns
-        row_height = 28
-        y = CARD_INSET - 8
-
-        scheme_label = _label("Scheme")
-        scheme_label.setFrame_(NSMakeRect(CARD_INSET, y + 4, 60, 18))
-        popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
-            NSMakeRect(CARD_INSET + 62, y, 220, 26), False
+    def _build_colors(self, parent: ttk.Frame) -> None:
+        parent.columnconfigure(1, weight=1)
+        ttk.Label(parent, text="Scheme").grid(row=0, column=0, sticky="w", padx=(0, 10))
+        self.scheme_labels = [
+            schemes.label_for(scheme.key) for scheme in schemes.load_schemes()
+        ] + [schemes.label_for(schemes.CUSTOM)]
+        self.scheme_var = tk.StringVar(
+            value=schemes.label_for(schemes.name_for_values(self.values))
         )
-        self._scheme_keys = [scheme.key for scheme in schemes.load_schemes()] + [schemes.CUSTOM]
-        popup.addItemsWithTitles_([schemes.label_for(key) for key in self._scheme_keys])
-        popup.selectItemWithTitle_(schemes.label_for(schemes.name_for_values(self._draft)))
-        popup.setTarget_(self)
-        popup.setAction_("schemeChanged:")
-        card.addSubview_(scheme_label)
-        card.addSubview_(popup)
-        self._scheme_popup = popup
-        y += 28
+        combo = ttk.Combobox(
+            parent, textvariable=self.scheme_var, values=self.scheme_labels, state="readonly", width=24
+        )
+        combo.grid(row=0, column=1, sticky="w", pady=(0, 4))
+        combo.bind("<<ComboboxSelected>>", self._scheme_changed)
+
+        row = 1
         for title, section, mapping in (
-            ("Interface", "palette", self._config.palette),
-            ("Accents", "accents", self._config.accents),
-            ("Source", "code", self._config.code),
+            ("Interface", "palette", self.config.palette),
+            ("Accents", "accents", self.config.accents),
+            ("Source", "code", self.config.code),
         ):
-            heading = _label(title, size=11, bold=True, muted=True)
-            heading.setFrame_(NSMakeRect(CARD_INSET, y, 200, 14))
-            card.addSubview_(heading)
-            y += 17
-            names = [field.name for field in fields(mapping)]
-            for index, name in enumerate(names):
-                row, column = divmod(index, columns)
-                x = CARD_INSET + column * cell
-                cell_y = y + row * row_height
-                key = f"{section}.{name}"
-                swatch = SwatchView.alloc().initWithFrame_colour_(
-                    NSMakeRect(x, cell_y, 24, 24), colour_from_css(self._draft[key])
-                )
-                caption = _label(name.replace("_", " "), size=11)
-                caption.setFrame_(NSMakeRect(x + 32, cell_y + 5, cell - 34, 16))
-                swatch.setOnChange_(self._swatch_changed)
-                card.addSubview_(swatch)
-                card.addSubview_(caption)
-                self._swatches[key] = swatch
-            rows = (len(names) + columns - 1) // columns
-            y += rows * row_height + 8
-
-    @objc.python_method
-    def _render_type(self) -> None:
-        card = self._card.contentView()
-        width = WINDOW_WIDTH - 2 * MARGIN
-        y = CARD_INSET - 2
-        for role, caption in (("reading", "Reading font"), ("mono", "Monospace font")):
-            label = _label(caption)
-            label.setFrame_(NSMakeRect(CARD_INSET, y + 5, 240, 18))
-            card.addSubview_(label)
-            card.addSubview_(self._font_popup(role, y))
-            y += 30
-
-        rows = (
-            ("type.md_size", "Markdown size", 96),
-            ("type.md_table", "Table size", 96),
-            ("type.code_size", "Code size", 96),
-            ("layout.md_width", "Markdown width", 96),
-            ("layout.md_gutter", "Markdown gutter", 96),
-            ("layout.listing_width", "Listing width", 96),
-        )
-        for key, caption, field_width in rows:
-            label = _label(caption)
-            label.setFrame_(NSMakeRect(CARD_INSET, y + 3, 240, 18))
-            field = _field(self._draft[key], field_width)
-            field.setFrame_(NSMakeRect(width - CARD_INSET - field_width, y, field_width, 22))
-            card.addSubview_(label)
-            card.addSubview_(field)
-            self._fields[key] = field
-            y += 30
-
-    # -------------------------------------------------------------- actions
-
-    @objc.python_method
-    def _font_popup(self, role: str, y: float) -> NSPopUpButton:
-        """Return a popup listing the catalogue for a role plus the system panel."""
-        width = WINDOW_WIDTH - 2 * MARGIN
-        catalogue = fonts.choices_for(role)
-        names = [choice.name for choice in catalogue]
-        current = self._draft.get(f"type.{role}", "")
-        items = list(names)
-        if current and current not in items:
-            items.insert(0, current)
-        items.append(SYSTEM_FONT_ITEM)
-
-        popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
-            NSMakeRect(width - CARD_INSET - 240, y, 240, 26), False
-        )
-        popup.addItemsWithTitles_(items)
-        popup.selectItemWithTitle_(current if current in items else SYSTEM_FONT_ITEM)
-        popup.setTarget_(self)
-        popup.setAction_("fontRoleChanged:")
-        self._font_popups[role] = popup
-        return popup
-
-    def fontRoleChanged_(self, sender) -> None:  # noqa: N802 - ObjC selector
-        role = next((key for key, popup in self._font_popups.items() if popup is sender), None)
-        if role is None:
-            return
-        title = sender.titleOfSelectedItem()
-        if title == SYSTEM_FONT_ITEM:
-            self._font_role = role
-            manager = NSFontManager.sharedFontManager()
-            manager.setTarget_(self)
-            manager.setAction_("systemFontChanged:")
-            manager.orderFrontFontPanel_(None)
-            return
-        choice = next((entry for entry in fonts.choices_for(role) if entry.name == title), None)
-        if choice is None:
-            return
-        self._draft[f"type.{role}"] = choice.name
-        self._draft[f"type.{role}_weights"] = choice.weights
-
-    def systemFontChanged_(self, sender) -> None:  # noqa: N802 - ObjC selector
-        """Apply a family chosen in the system font panel."""
-        role = self._font_role
-        if role is None:
-            return
-        chosen = sender.convertFont_(NSFont.systemFontOfSize_(13))
-        family = chosen.familyName() if chosen is not None else None
-        if not family:
-            return
-        self._draft[f"type.{role}"] = family
-        # A family from the panel may also be a Google font; keep its import.
-        self._draft[f"type.{role}_weights"] = fonts.weights_for(role, family) or ""
-        self._render_section()
-
-    @objc.python_method
-    def _stash(self) -> None:
-        """Copy the visible controls into the draft."""
-        for key, field in self._fields.items():
-            self._draft[key] = field.stringValue()
-        for key, swatch in self._swatches.items():
-            self._draft[key] = css_from_colour(swatch.colour())
-        if self._glob_fields:
-            self._draft["server.no_process"] = "\n".join(
-                field.stringValue() for field in self._glob_fields
+            ttk.Label(parent, text=title, font=_bold(self.base_font)).grid(
+                row=row, column=0, columnspan=2, sticky="w", pady=(12, 2)
             )
+            row += 1
+            grid = ttk.Frame(parent)
+            grid.grid(row=row, column=0, columnspan=2, sticky="w")
+            row += 1
+            for index, field in enumerate(fields(mapping)):
+                key = f"{section}.{field.name}"
+                cell = ttk.Frame(grid)
+                cell.grid(
+                    row=index // SWATCH_COLUMNS,
+                    column=index % SWATCH_COLUMNS,
+                    sticky="w",
+                    padx=(0, 18),
+                    pady=2,
+                )
+                canvas = tk.Canvas(cell, width=26, height=26, highlightthickness=0, cursor="hand2")
+                canvas.pack(side="left", padx=(0, 7))
+                _draw_swatch(canvas, hex_for_picker(self.values[key]))
+                canvas.bind("<Button-1>", lambda _event, name=key: self._pick_color(name))
+                ttk.Label(cell, text=labels.label_for(section, field.name)).pack(side="left")
+                self.swatches[key] = canvas
 
-    def schemeChanged_(self, sender) -> None:  # noqa: N802 - ObjC selector
-        index = sender.indexOfSelectedItem()
-        if index < 0 or index >= len(self._scheme_keys):
+    def _scheme_changed(self, _event=None) -> None:
+        label = self.scheme_var.get()
+        chosen = next(
+            (scheme for scheme in schemes.load_schemes() if scheme.label == label), None
+        )
+        if chosen is None:
             return
-        key = self._scheme_keys[index]
-        if key == schemes.CUSTOM:
+        self.values.update(chosen.colors())
+        self._refresh_swatches()
+
+    def _pick_color(self, key: str) -> None:
+        current = hex_for_picker(self.values.get(key, "#000000"))
+        _, chosen = colorchooser.askcolor(
+            color=current,
+            parent=self.root,
+            title=labels.label_for(key.split(".")[0], key.split(".")[1]),
+        )
+        if not chosen:
             return
-        self._stash()
-        chosen = next(scheme for scheme in schemes.load_schemes() if scheme.key == key)
-        schemes.apply_to_values(self._draft, chosen)
-        self._render_section()
+        red, green, blue, _ = parse_css_color(chosen)
+        self.values[key] = css_color(red, green, blue)
+        self._refresh_swatches()
 
-    @objc.python_method
-    def _swatch_changed(self) -> None:
-        """Keep the scheme dropdown honest when a swatch is edited by hand."""
-        if getattr(self, "_scheme_popup", None) is None:
+    def _refresh_swatches(self) -> None:
+        for key, canvas in self.swatches.items():
+            _draw_swatch(canvas, hex_for_picker(self.values[key]))
+        self.scheme_var.set(
+            schemes.label_for(schemes.name_for_values(self.values))
+        )
+
+    def _build_typography(self, parent: ttk.Frame) -> None:
+        # Column 0 takes the slack, so every control sits against the right edge
+        # while its label stays on the left.
+        parent.columnconfigure(0, weight=1)
+        row = 0
+        for role, caption in (("reading", "Reading font"), ("mono", "Monospace font")):
+            ttk.Label(parent, text=caption).grid(row=row, column=0, sticky="w", pady=4)
+            ttk.Button(
+                parent,
+                text=self.values[f"type.{role}"] + "  ▾",
+                width=30,
+                command=lambda name=role: self._choose_font(name),
+            ).grid(row=row, column=1, sticky="e", pady=4)
+            row += 1
+
+        for title, keys in (
+            (
+                "Text sizes",
+                (
+                    ("type.md_size", "Markdown"),
+                    ("type.md_table", "Tables"),
+                    ("type.code_size", "Code"),
+                ),
+            ),
+            (
+                "Layout",
+                (
+                    ("layout.md_width", "Reading column"),
+                    ("layout.md_gutter", "Side padding"),
+                    ("layout.listing_width", "Listing width"),
+                ),
+            ),
+        ):
+            ttk.Label(parent, text=title, font=_bold(self.base_font)).grid(
+                row=row, column=0, columnspan=2, sticky="w", pady=(14, 2)
+            )
+            row += 1
+            for key, caption in keys:
+                ttk.Label(parent, text=caption).grid(row=row, column=0, sticky="w", pady=3)
+                row = self._add_slider(parent, key, row)
+
+    def _add_slider(self, parent: ttk.Frame, key: str, row: int) -> int:
+        spec = slider_for(key, self.values.get(key, ""))
+        if spec is None:
+            variable = tk.StringVar(value=self.values.get(key, ""))
+            ttk.Entry(parent, textvariable=variable, width=14, justify="right").grid(
+                row=row, column=1, sticky="e", pady=3
+            )
+            self.text_vars[key] = variable
+            return row + 1
+
+        minimum, maximum, step, unit, value = spec
+        variable = tk.DoubleVar(value=value)
+        readout = tk.StringVar(value=format_length(value, unit))
+        holder = ttk.Frame(parent)
+        holder.grid(row=row, column=1, sticky="e", pady=3)
+        scale = ttk.Scale(
+            holder,
+            from_=minimum,
+            to=maximum,
+            variable=variable,
+            length=210,
+            command=lambda new_value, k=key: self._slider_moved(k, new_value),
+        )
+        scale.pack(side="left")
+        ttk.Label(holder, textvariable=readout, width=7, anchor="e", foreground=self.muted).pack(
+            side="left", padx=(8, 0)
+        )
+        self.slider_vars[key] = variable
+        self.slider_labels[key] = readout
+        return row + 1
+
+    def _slider_moved(self, key: str, _value=None) -> None:
+        variable = self.slider_vars[key]
+        _, _, step, unit, _ = slider_for(key, self.values[key]) or (0, 0, 1, "", 0)
+        value = snap(variable.get(), step)
+        if abs(variable.get() - value) > 1e-9:
+            variable.set(value)
+        self.slider_labels[key].set(format_length(value, unit))
+
+    def _choose_font(self, role: str) -> None:
+        chosen = FontPicker(self.root, self.base_font, role).result
+        if not chosen:
             return
-        self._stash()
-        key = schemes.name_for_values(self._draft)
-        self._scheme_popup.selectItemWithTitle_(schemes.label_for(key))
+        self.values[f"type.{role}"] = chosen
+        weights = fonts.weights_for(role, chosen) or ""
+        self.values[f"type.{role}_weights"] = weights
+        self._rebuild_typography()
 
-    def sectionChanged_(self, sender) -> None:  # noqa: N802 - ObjC selector
-        self._stash()
-        self._section = sender.selectedSegment()
-        self._render_section()
+    def _rebuild_typography(self) -> None:
+        """Rebuild the Type tab, e.g. after choosing a font."""
+        frame = self.notebook.nametowidget(self.notebook.tabs()[2])
+        for child in frame.winfo_children():
+            child.destroy()
+        # Only this tab's controls are being rebuilt; the General tab's entries
+        # must keep their variables or an edit there would be lost.
+        for key in [key for key in self.text_vars if key.split(".")[0] in ("type", "layout")]:
+            del self.text_vars[key]
+        self.slider_vars.clear()
+        self.slider_labels.clear()
+        self._build_typography(frame)
+        self._resize_to_content()
 
-    def addGlob_(self, _sender) -> None:  # noqa: N802 - ObjC selector
-        self._stash()
-        lines = [line for line in self._draft["server.no_process"].splitlines() if line.strip()]
-        lines.append("~/")
-        self._draft["server.no_process"] = "\n".join(lines)
-        self._render_section()
+    def _build_footer(self) -> None:
+        footer = ttk.Frame(self.root, padding=(18, 8, 18, 14))
+        footer.pack(fill="x")
+        ttk.Button(footer, text="Show config file", command=self._reveal_config).pack(side="left")
+        ttk.Button(footer, text="Save", command=self._save, width=9).pack(side="right")
+        ttk.Button(footer, text="Cancel", command=self._close, width=9).pack(
+            side="right", padx=(0, 8)
+        )
+        self.root.bind("<Escape>", lambda _event: self._close())
+        self.root.bind("<Command-s>", lambda _event: self._save())
+        self.root.bind("<Control-s>", lambda _event: self._save())
 
-    def removeGlob_(self, sender) -> None:  # noqa: N802 - ObjC selector
-        self._stash()
-        lines = [line for line in self._draft["server.no_process"].splitlines() if line.strip()]
-        index = sender.row() if isinstance(sender, IndexedButton) else None
-        if index is not None and 0 <= index < len(lines):
-            lines.pop(index)
-        self._draft["server.no_process"] = "\n".join(lines)
-        self._render_section()
+    # --------------------------------------------------------------- saving
 
-    @objc.python_method
-    def show(self) -> None:
-        """Bring the window to the front."""
-        NSApplication.sharedApplication().activateIgnoringOtherApps_(True)
-        self._window.makeKeyAndOrderFront_(None)
-
-    @objc.python_method
     def _collect(self) -> dict:
         """Read every control into a TOML-shaped dict."""
-        self._stash()
+        values = dict(self.values)
+        for key, variable in self.text_vars.items():
+            values[key] = variable.get()
+        for key, variable in self.slider_vars.items():
+            _, _, step, unit, _ = slider_for(key, self.values[key]) or (0, 0, 1, "", 0)
+            values[key] = format_length(snap(variable.get(), step), unit)
+        self._stash_globs()
+        values["server.no_process"] = [
+            line.strip() for line in values["server.no_process"].splitlines() if line.strip()
+        ]
+
         data: dict[str, dict] = {}
-        for key, value in self._draft.items():
+        for key, value in values.items():
             section, name = key.split(".", 1)
             data.setdefault(section, {})[name] = value
-        data["server"]["no_process"] = [
-            line.strip() for line in self._draft["server.no_process"].splitlines() if line.strip()
-        ]
         for key in ("server.port", "cache.entries", "server.max_render_bytes"):
             section, name = key.split(".", 1)
-            data[section][name] = int(self._draft[key])
+            data[section][name] = int(values[key])
         return data
 
-    @objc.python_method
-    def _apply_login_setting(self, wanted: bool) -> str | None:
-        """Install or remove the LaunchAgent; return an error message on failure."""
-        try:
-            if wanted and not launchagent.is_installed():
-                launchagent.install(Path.home())
-            elif not wanted and launchagent.is_installed():
-                launchagent.uninstall()
-        except Exception as error:  # noqa: BLE001 - surface any launchctl failure
-            return f"Could not update the login item: {error}"
-        return None
-
-    def save_(self, _sender) -> None:  # noqa: N802 - ObjC selector
+    def _save(self) -> None:
         try:
             config = parse_config(self._collect(), user_config_path())
         except ConfigError as error:
-            self._alert("These settings cannot be saved", str(error))
+            messagebox.showerror("These settings cannot be saved", str(error), parent=self.root)
             return
         except ValueError as error:
-            self._alert("These settings cannot be saved", f"Not a number: {error}")
+            messagebox.showerror("These settings cannot be saved", f"Not a number: {error}", parent=self.root)
             return
 
-        login_error = self._apply_login_setting(bool(self._login_checkbox.state()))
+        login_error = None
+        try:
+            if self.login_var.get() and not autostart.is_installed():
+                autostart.install(Path.home())
+            elif not self.login_var.get() and autostart.is_installed():
+                autostart.uninstall()
+        except Exception as error:  # noqa: BLE001 - show, do not crash
+            login_error = f"Could not update the login item: {error}"
+
         try:
             save_config(config)
         except (ConfigError, OSError) as error:
-            self._alert("Could not write the config file", str(error))
+            messagebox.showerror("Could not write the config file", str(error), parent=self.root)
             return
 
-        if self._callback is not None:
-            self._callback(config)
+        if self.callback is not None:
+            self.callback(config)
         if login_error:
-            self._alert("Settings saved, but the login item failed", login_error)
-        elif config.server.port != self._config.server.port:
-            self._alert("Settings saved", "The new port takes effect after serv restarts.")
-        self._config = config
-        self._window.performClose_(None)
+            messagebox.showwarning("Settings saved, but the login item failed", login_error, parent=self.root)
+        elif config.server.port != self.config.server.port:
+            messagebox.showinfo(
+                "Settings saved", "The new port takes effect after serv restarts.", parent=self.root
+            )
+        self.config = config
+        self._close()
 
-    def windowWillClose_(self, _notification) -> None:  # noqa: N802 - ObjC selector
-        """Quit when the settings window closes and no server is attached."""
-        if self._standalone:
-            NSApplication.sharedApplication().terminate_(None)
-
-    def cancel_(self, _sender) -> None:  # noqa: N802 - ObjC selector
-        self._window.performClose_(None)
-
-    def reveal_(self, _sender) -> None:  # noqa: N802 - ObjC selector
+    def _reveal_config(self) -> None:
         path = user_config_path()
         if not path.is_file():
             try:
-                save_config(self._config)
+                save_config(self.config)
             except (ConfigError, OSError) as error:
-                self._alert("Could not write the config file", str(error))
+                messagebox.showerror("Could not write the config file", str(error), parent=self.root)
                 return
-        NSWorkspace.sharedWorkspace().selectFile_inFileViewerRootedAtPath_(str(path), "")
+        _reveal(path)
 
-    @objc.python_method
-    def _alert(self, title: str, detail: str) -> None:
-        alert = NSAlert.alloc().init()
-        alert.setMessageText_(title)
-        alert.setInformativeText_(detail)
-        alert.addButtonWithTitle_("OK")
-        alert.runModal()
+    def _close(self) -> None:
+        self.root.destroy()
 
+    # ---------------------------------------------------------------- run
 
-def show_settings(
-    config: Config,
-    callback: SaveCallback | None = None,
-    *,
-    standalone: bool = False,
-) -> SettingsController:
-    """Open the settings window, running its own event loop when standalone."""
-    application = NSApplication.sharedApplication()
-    application.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
-    controller = SettingsController.alloc().initWithConfig_callback_(config, callback)
-    controller._standalone = standalone
-    controller.show()
-    if standalone:
-        application.run()
-    return controller
+    def show(self) -> None:
+        """Show the window and run its event loop until it closes."""
+        self.root.mainloop()
 
 
-def ask_start_at_login_if_needed() -> bool | None:
+class FontPicker(tk.Toplevel):
+    """A small modal list of installed font families with a search box."""
+
+    def __init__(self, parent: tk.Misc, base_font: tkfont.Font, role: str) -> None:
+        super().__init__(parent)
+        self.title("Choose a font")
+        self.result: str | None = None
+        self.resizable(False, False)
+        self.transient(parent)
+        self.families = sorted(set(tkfont.families(self)))
+        self.query = tk.StringVar()
+
+        frame = ttk.Frame(self, padding=12)
+        frame.pack(fill="both", expand=True)
+        search = ttk.Entry(frame, textvariable=self.query)
+        search.pack(fill="x")
+        search.bind("<KeyRelease>", lambda _event: self._filter())
+        search.focus_set()
+
+        self.listbox = tk.Listbox(frame, height=14, width=38, activestyle="none")
+        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=self.listbox.yview)
+        self.listbox.configure(yscrollcommand=scrollbar.set)
+        self.listbox.pack(side="left", fill="both", expand=True, pady=8)
+        scrollbar.pack(side="right", fill="y", pady=8)
+        self.listbox.bind("<Double-Button-1>", lambda _event: self._accept())
+        self.listbox.bind("<Return>", lambda _event: self._accept())
+
+        buttons = ttk.Frame(frame)
+        buttons.pack(fill="x")
+        ttk.Button(buttons, text="Cancel", command=self._cancel, width=9).pack(side="right")
+        ttk.Button(buttons, text="Choose", command=self._accept, width=9).pack(
+            side="right", padx=(0, 8)
+        )
+        self._fill(self.families)
+        _center(self, 320, 360)
+        self.grab_set()
+        self.wait_window(self)
+
+    def _fill(self, families: list[str]) -> None:
+        self.listbox.delete(0, "end")
+        for family in families:
+            self.listbox.insert("end", family)
+        if families:
+            self.listbox.selection_set(0)
+
+    def _filter(self) -> None:
+        text = self.query.get().lower()
+        self._fill([family for family in self.families if text in family.lower()])
+
+    def _accept(self) -> None:
+        selection = self.listbox.curselection()
+        if selection:
+            self.result = self.listbox.get(selection[0])
+        self.destroy()
+
+    def _cancel(self) -> None:
+        self.destroy()
+
+
+# ---------------------------------------------------------------- entry points
+
+
+def show_settings(config: Config, callback: SaveCallback | None = None) -> None:
+    """Open the settings window and block until it closes."""
+    SettingsWindow(config, callback).show()
+
+
+def ask_start_at_login_if_needed(config: Config | None = None) -> bool | None:
     """Ask the start-at-login question once, on the very first launch.
 
     Returns None when a user config already exists, so the question appears
-    exactly once. The answer is remembered by writing the config file, which
-    also means the settings window opens on a real file from then on.
+    exactly once. Answering writes the config file, which both pins the answer
+    and marks the question as asked.
     """
     if user_config_path().is_file():
         return None
-    application = NSApplication.sharedApplication()
-    application.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
-    alert = NSAlert.alloc().init()
-    alert.setMessageText_("Start serv at login?")
-    alert.setInformativeText_(
-        "serv can start automatically and live in the menu bar, so "
-        "http://localhost:1002/ always works. You can change this later in "
-        "serv settings."
-    )
-    alert.addButtonWithTitle_("Start at Login")
-    alert.addButtonWithTitle_("Not Now")
-    wanted = alert.runModal() == 1000
-    if wanted:
-        try:
-            launchagent.install(Path.home())
-        except Exception as error:  # noqa: BLE001 - never block the app
-            print(f"serv: could not install the login item: {error}", flush=True)
+
+    root = tk.Tk()
+    root.withdraw()
     try:
-        save_config(load_config())
-    except (ConfigError, OSError) as error:
-        print(f"serv: could not write {user_config_path()}: {error}", flush=True)
+        wanted = messagebox.askyesno(
+            "Start serv at login?",
+            "serv can start automatically and live in the tray, so "
+            "http://localhost:1002/ always works.\n\n"
+            "You can change this later in serv settings.",
+            parent=root,
+        )
+        if wanted:
+            try:
+                autostart.install(Path.home())
+            except Exception as error:  # noqa: BLE001 - never block the app
+                print(f"serv: could not install the login item: {error}", flush=True)
+        try:
+            save_config(config or load_config())
+        except (ConfigError, OSError) as error:
+            print(f"serv: could not write {user_config_path()}: {error}", flush=True)
+    finally:
+        root.destroy()
     return wanted

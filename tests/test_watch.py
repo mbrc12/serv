@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import replace
-import plistlib
 from pathlib import Path
 
 import pytest
 
-from serv import launchagent, watch
+from serv import watch
 from serv.config import load_config, save_config
 from serv.server import ServerState
 
@@ -48,12 +47,3 @@ def test_watcher_reports_a_broken_file_and_keeps_serving(
 
     assert state.config == original
     assert state.snapshot().last_error is not None
-
-
-def test_launch_agent_plist_points_at_the_app() -> None:
-    payload = plistlib.loads(launchagent.plist_contents(Path.home()))
-    assert payload["Label"] == "local.serv"
-    assert payload["RunAtLoad"] is True
-    assert payload["WorkingDirectory"] == str(Path.home())
-    assert payload["ProgramArguments"][-1] == "--agent"
-    assert "serv" in payload["ProgramArguments"][0]

@@ -1,11 +1,11 @@
-"""Prebuilt colour schemes.
+"""Prebuilt color schemes.
 
 The schemes live in ``config/schemes.toml`` as data; this module only reads,
 validates and applies them. Picking a scheme in the settings window copies its
-colours into the served palette fields, so ``~/.config/serv/serv.toml`` stays the
+colors into the served palette fields, so ``~/.config/serv/serv.toml`` stays the
 single source of truth.
 
-A scheme must define every colour serv uses. A missing or malformed value is a
+A scheme must define every color serv uses. A missing or malformed value is a
 startup error rather than a half-themed page.
 """
 
@@ -22,7 +22,7 @@ from .resources import config_file
 
 SCHEMES_FILE = "schemes.toml"
 
-#: Shown in the dropdown when the colours match no scheme.
+#: Shown in the dropdown when the colors match no scheme.
 CUSTOM = "custom"
 
 SECTIONS = (
@@ -34,7 +34,7 @@ SECTIONS = (
 
 @dataclass(frozen=True)
 class Scheme:
-    """One prebuilt set of colours."""
+    """One prebuilt set of colors."""
 
     key: str
     label: str
@@ -42,8 +42,8 @@ class Scheme:
     accents: Accents
     code: CodePalette
 
-    def colours(self) -> dict[str, str]:
-        """Return the values as ``section.key`` → CSS colour."""
+    def colors(self) -> dict[str, str]:
+        """Return the values as ``section.key`` → CSS color."""
         values: dict[str, str] = {}
         for section, mapping in (
             ("palette", self.palette),
@@ -98,7 +98,7 @@ def load_schemes() -> tuple[Scheme, ...]:
 
 
 def apply(config: Config, scheme: Scheme) -> Config:
-    """Return a copy of config with the scheme's colours."""
+    """Return a copy of config with the scheme's colors."""
     return Config(
         server=config.server,
         cache=config.cache,
@@ -112,10 +112,10 @@ def apply(config: Config, scheme: Scheme) -> Config:
 
 
 def name_for_values(values: dict[str, str]) -> str:
-    """Return the scheme key matching these colour values, or 'custom'."""
+    """Return the scheme key matching these color values, or 'custom'."""
     for scheme in load_schemes():
-        colours = scheme.colours()
-        if all(values.get(key, "").strip().lower() == value.lower() for key, value in colours.items()):
+        colors = scheme.colors()
+        if all(values.get(key, "").strip().lower() == value.lower() for key, value in colors.items()):
             return scheme.key
     return CUSTOM
 
@@ -139,5 +139,5 @@ def label_for(key: str) -> str:
 
 
 def apply_to_values(values: dict[str, str], scheme: Scheme) -> None:
-    """Copy a scheme's colours into a draft mapping (mutated in place)."""
-    values.update(scheme.colours())
+    """Copy a scheme's colors into a draft mapping (mutated in place)."""
+    values.update(scheme.colors())

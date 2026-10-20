@@ -5,7 +5,7 @@
   Rendering is black geometry on a transparent canvas, i.e. a macOS template
   image, so the system inverts it for dark menu bars. Triangle and arrow share
   one stroke width, which is what keeps their corner radii identical, and the
-  arrow is centred on the triangle's incenter rather than the bounding box so it
+  arrow is centered on the triangle's incenter rather than the bounding box so it
   does not look top-heavy.
 
   Regenerate the PNGs with: uv run python tools/make_tray_icon.py

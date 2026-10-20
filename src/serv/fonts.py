@@ -1,6 +1,6 @@
 """Font choices for the reading and monospace roles.
 
-The catalogue is data in ``config/fonts.toml``: each entry is a Google Fonts
+The catalog is data in ``config/fonts.toml``: each entry is a Google Fonts
 family plus the axis query needed to load the weights serv uses. A family with an
 empty weights string is treated as a font installed on the Mac, so no web
 request is made for it.
@@ -35,7 +35,7 @@ class FontChoice:
 
 @lru_cache(maxsize=1)
 def load_fonts() -> dict[str, tuple[FontChoice, ...]]:
-    """Return the catalogue per role, in file order."""
+    """Return the catalog per role, in file order."""
     path = config_file(FONTS_FILE)
     if path is None:
         return {role: () for role in ROLES}
@@ -44,7 +44,7 @@ def load_fonts() -> dict[str, tuple[FontChoice, ...]]:
     except tomllib.TOMLDecodeError as error:
         raise ConfigError(f"{path}: {error}") from error
 
-    catalogue: dict[str, tuple[FontChoice, ...]] = {}
+    catalog: dict[str, tuple[FontChoice, ...]] = {}
     for role in ROLES:
         table = data.get(role)
         if not isinstance(table, dict):
@@ -63,8 +63,8 @@ def load_fonts() -> dict[str, tuple[FontChoice, ...]]:
             if not isinstance(weights, str) or (weights and not WEIGHTS.match(weights)):
                 raise ConfigError(f"{path}: {name} has an invalid weights query {weights!r}")
             choices.append(FontChoice(name=name, weights=weights))
-        catalogue[role] = tuple(choices)
-    return catalogue
+        catalog[role] = tuple(choices)
+    return catalog
 
 
 def choices_for(role: str) -> tuple[FontChoice, ...]:

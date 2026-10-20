@@ -52,6 +52,23 @@ PRISM_COMPONENTS: dict[str, tuple[str, ...]] = {
     "yaml": ("yaml",),
 }
 
+#: Icons are inline SVG so they inherit the text color and need no requests.
+FOLDER_ICON = (
+    '<svg class="icon folder-icon" viewBox="0 0 16 16" width="16" height="16" '
+    'aria-hidden="true" focusable="false">'
+    '<path d="M1.9 4.4a1 1 0 0 1 1-1h3.05a1 1 0 0 1 .71.3l1.1 1.1h5.35a1 1 0 0 1 1 1v5.9a1 1 0 0 1-1 1H2.9a1 1 0 0 1-1-1z" '
+    'fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>'
+)
+
+FILE_ICON = (
+    '<svg class="icon file-icon" viewBox="0 0 16 16" width="16" height="16" '
+    'aria-hidden="true" focusable="false">'
+    '<path d="M9.4 1.9H4.3a1 1 0 0 0-1 1v10.2a1 1 0 0 0 1 1h7.4a1 1 0 0 0 1-1V5z" '
+    'fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>'
+    '<path d="M9.4 1.9V5h3.3" fill="none" stroke="currentColor" stroke-width="1.4" '
+    'stroke-linejoin="round"/></svg>'
+)
+
 UP_ARROW = (
     '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">'
     '<path d="M8 13V3M4 7l4-4 4 4" fill="none" stroke="currentColor" '
@@ -181,9 +198,11 @@ def _listing_row(path: Path, name: str) -> str:
     item_class = "dir" if is_directory else "file"
     hidden = " hidden-entry" if name.startswith(".") else ""
     href = html.escape(name + ("/" if is_directory else ""), quote=True)
+    icon = FOLDER_ICON if is_directory else FILE_ICON
     return (
         f'<li class="{item_class}{hidden}">'
-        f'<a class="name {item_class}" href="{href}">{html.escape(display)}</a>'
+        f'<a class="name {item_class}" href="{href}">{icon}'
+        f'<span class="label">{html.escape(display)}</span></a>'
         f'<span class="meta"><time>{modified}</time>'
         f'<span class="size">{size}</span></span></li>'
     )

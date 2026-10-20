@@ -56,23 +56,14 @@ PYTHON_EXCLUDES = (
     "idle_test",
     "ensurepip",
     "turtledemo",
-    "tkinter",
     "site-packages/pip",
     "site-packages/pip-*",
     "site-packages/setuptools",
     "site-packages/pkg_resources",
 )
 
-#: Tcl/Tk and its shared libraries: serv draws with AppKit, never with Tk.
-PYTHON_LIBRARY_EXCLUDES = (
-    "tcl*",
-    "tk*",
-    "itcl*",
-    "thread*",
-    "libtcl*",
-    "libtk*",
-    "pkgconfig",
-)
+#: Kept: Tcl/Tk, because the settings window is Tk. Dropped: build metadata.
+PYTHON_LIBRARY_EXCLUDES = ("pkgconfig",)
 
 
 def log(message: str) -> None:
@@ -266,8 +257,10 @@ def sign() -> None:
 def smoke_test(version: str) -> None:
     """Prove the bundled interpreter imports serv and the dependencies."""
     script = (
-        "import serv, serv.server, serv.ui, serv.tray, markdown_it, mdit_py_plugins, rumps, deal;"
-        "print('imports ok')"
+        "import tkinter, pystray, PIL, PIL.Image, markdown_it, mdit_py_plugins, deal;"
+        "import serv, serv.server, serv.ui, serv.tray, serv.autostart;"
+        "root = tkinter.Tk(); root.withdraw(); root.destroy();"
+        "print('imports ok, Tk', tkinter.TkVersion)"
     )
     result = run(
         [str(PYTHON / "bin" / "python3"), "-c", script],

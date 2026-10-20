@@ -5,7 +5,7 @@ Precedence: ``--config PATH``, then ``$SERV_CONFIG``, then the user file
 user file exists the bundled defaults are used in memory, so serv runs without
 ever writing anything.
 
-Colours are validated at startup so a typo fails loudly instead of producing a
+Colors are validated at startup so a typo fails loudly instead of producing a
 page with one invisible element.
 """
 
@@ -27,7 +27,7 @@ CONFIG_ENV = "SERV_CONFIG"
 
 CONFIG_NAME = Path("config") / "serv.toml"
 
-# Accepted colour syntaxes: #rgb, #rrggbb, #rrggbbaa, rgb()/rgba()/hsl(), and
+# Accepted color syntaxes: #rgb, #rrggbb, #rrggbbaa, rgb()/rgba()/hsl(), and
 # the CSS-wide keywords. Everything else is a typo.
 _COLOR = re.compile(
     r"""^(?:
@@ -189,7 +189,7 @@ def _require_mapping(section: object, name: str) -> dict:
 def _color(section: dict, key: str, where: str) -> str:
     value = section.get(key)
     if not isinstance(value, str) or not _COLOR.match(value):
-        raise ConfigError(f"{where}.{key} is not a CSS colour: {value!r}")
+        raise ConfigError(f"{where}.{key} is not a CSS color: {value!r}")
     return value
 
 
@@ -254,13 +254,13 @@ def parse_config(data: dict, source: Path | None = None) -> Config:
     mono_weights = _weights(typography, "mono_weights", "type")
     if reading_weights is None or mono_weights is None:
         # Configs written before the weights keys existed: derive them from the
-        # font catalogue, so a known Google family still loads its webfont.
-        from . import fonts as font_catalogue
+        # font catalog, so a known Google family still loads its webfont.
+        from . import fonts as font_catalog
 
         if reading_weights is None:
-            reading_weights = font_catalogue.weights_for("reading", reading) or ""
+            reading_weights = font_catalog.weights_for("reading", reading) or ""
         if mono_weights is None:
-            mono_weights = font_catalogue.weights_for("mono", mono) or ""
+            mono_weights = font_catalog.weights_for("mono", mono) or ""
 
     return Config(
         server=ServerSection(
@@ -322,7 +322,7 @@ def load_config(explicit: str | None = None) -> Config:
 # --------------------------------------------------------------------- writing
 
 _HEADER = """\
-# serv configuration. Every colour the server emits lives here; the Python
+# serv configuration. Every color the server emits lives here; the Python
 # source only reads these keys. Saved by the settings window, safe to edit by
 # hand: a bad value is reported at startup instead of failing silently.
 """
@@ -340,7 +340,7 @@ def _abbreviate_home(path: str) -> str:
     return "~" + path[len(home) :] if path.startswith(home) else path
 
 
-def _colour_block(name: str, comment: str, mapping: dict[str, str]) -> str:
+def _color_block(name: str, comment: str, mapping: dict[str, str]) -> str:
     lines = [f"[{name}]", comment]
     width = max(len(key) for key in mapping)
     lines.extend(f"{key.ljust(width)} = {_quote(value)}" for key, value in mapping.items())
@@ -349,7 +349,7 @@ def _colour_block(name: str, comment: str, mapping: dict[str, str]) -> str:
 
 @deal.ensure(
     lambda config, result: replace(load_config_text(result), source=config.source) == config,
-    message="serialised config must load back identically",
+    message="serialized config must load back identically",
 )
 def dump_config(config: Config) -> str:
     """Serialise a Config as commented TOML that loads back identically."""
@@ -371,11 +371,11 @@ def dump_config(config: Config) -> str:
         "# Rendered-Markdown entries kept in memory; each entry is one page of HTML.",
         f"entries = {config.cache.entries}",
         "",
-        _colour_block("palette", "# Surfaces and the base syntax colours.", config.palette.as_dict()),
+        _color_block("palette", "# Surfaces and the base syntax colors.", config.palette.as_dict()),
         "",
-        _colour_block("accents", "# One accent per surface.", vars(config.accents)),
+        _color_block("accents", "# One accent per surface.", vars(config.accents)),
         "",
-        _colour_block("code", "# Source-page tokens on the flat canvas.", vars(config.code)),
+        _color_block("code", "# Source-page tokens on the flat canvas.", vars(config.code)),
         "",
         "[type]",
         f"reading   = {_quote(config.type.reading)}",

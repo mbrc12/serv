@@ -62,8 +62,8 @@ def translate(url_path: str, root: Path) -> Path:
         path = urllib.parse.unquote(path, errors="surrogatepass")
     except UnicodeDecodeError:
         path = urllib.parse.unquote(path)
-    normalised = posixpath.normpath(path)
-    parts = [part for part in normalised.split("/") if part not in ("", ".", "..")]
+    normalized = posixpath.normpath(path)
+    parts = [part for part in normalized.split("/") if part not in ("", ".", "..")]
     return Path(root, *parts)
 
 

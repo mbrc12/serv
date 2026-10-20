@@ -22,6 +22,8 @@ CONFIG_NAME = Path("config") / "serv.toml"
 SCHEMES_NAME = Path("config") / "schemes.toml"
 STYLE_TEMPLATE = Path("style") / "serv.css"
 TRAY_ICON = Path("tray") / "servTemplate.png"
+TRAY_GLYPH_LIGHT = Path("tray") / "servTray-light.png"
+TRAY_GLYPH_DARK = Path("tray") / "servTray-dark.png"
 
 
 @lru_cache(maxsize=1)

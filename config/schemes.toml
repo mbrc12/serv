@@ -1,8 +1,8 @@
-# Prebuilt colour schemes shown in the settings window's Colours section.
+# Prebuilt color schemes shown in the settings window's Colors section.
 #
 # Picking one copies these values into the palette, accents and code sections of
 # ~/.config/serv/serv.toml; the file stays the single source of truth. A scheme
-# must define every colour serv uses, otherwise it is rejected at startup.
+# must define every color serv uses, otherwise it is rejected at startup.
 #
 # The first scheme matches config/serv.toml, so "Tokyo Night Day" is what a new
 # installation uses.

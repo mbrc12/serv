@@ -1,4 +1,4 @@
-# serv configuration. Every colour the server emits lives here; the Python
+# serv configuration. Every color the server emits lives here; the Python
 # source only reads these keys. Restart the server after editing.
 
 [server]

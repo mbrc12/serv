@@ -1,0 +1,37 @@
+# Human labels for every colour key.
+#
+# The settings window shows these instead of the raw keys, so a swatch reads
+# "Page background" rather than "bg". Keys are the names used in serv.toml; a
+# missing label is a startup error, which keeps the window from showing a raw
+# identifier again.
+
+[palette]
+bg       = "Page background"
+text     = "Body text"
+muted    = "Secondary text"
+border   = "Borders"
+hover    = "Hover row"
+selected = "Selected row"
+zebra    = "Striped rows"
+red      = "Red"
+orange   = "Orange"
+green    = "Green"
+blue     = "Blue"
+teal     = "Teal"
+purple   = "Purple"
+
+[accents]
+markdown  = "Markdown pages"
+listing   = "Listing heading"
+directory = "Folder links"
+
+[code]
+base      = "Code text"
+comment   = "Comments"
+keyword   = "Keywords"
+operator  = "Operators"
+string    = "Strings"
+function  = "Functions"
+number    = "Numbers"
+tag       = "Tags and attributes"
+highlight = "Highlighted line"

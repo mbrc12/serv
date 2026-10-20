@@ -24,8 +24,8 @@ def test_defaults_load_from_the_shipped_config() -> None:
     assert config.server.no_process == (str(Path("~/dev/game/**/build/**").expanduser()),)
 
 
-def test_invalid_colour_is_rejected(raw: dict) -> None:
-    raw["palette"]["bg"] = "not-a-colour"
+def test_invalid_color_is_rejected(raw: dict) -> None:
+    raw["palette"]["bg"] = "not-a-color"
     with pytest.raises(ConfigError, match="palette.bg"):
         parse_config(raw)
 

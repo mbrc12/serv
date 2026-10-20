@@ -4,17 +4,19 @@
 
 - `src/serv/` — the server: `server.py` (routing), `markdown.py` (renderer),
   `page.py` (HTML shell, code pages, listings), `plugins/` (math, chemistry,
-  Mermaid), `config.py` + `theme.py` (settings → CSS), `ui.py` + `tray.py`
-  (AppKit), `launchagent.py` (login item), `watch.py` (live config reload).
+  Mermaid), `config.py` + `theme.py` (settings → CSS), `ui.py` (Tk settings
+  window), `tray.py` (pystray), `autostart.py` (login item per OS), `watch.py`
+  (live config reload), plus pure helpers `colors.py`, `units.py`, `schemes.py`,
+  `fonts.py`, `labels.py`, `appearance.py`.
 - `data/` — stylesheet template, chemistry renderer JS, tray and app icons.
   These are application data; third-party libraries are **not** vendored.
 - `config/serv.toml` — the built-in defaults, copied into the app bundle.
-- `tools/` — `build_app.py` (bundle builder), `make_tray_icon.py`.
+- `tools/` — `build_app.py` (macOS bundle builder), `make_tray_icon.py`.
 - `tests/` — pytest, including an end-to-end HTTP test on an ephemeral port.
 
 ## Rules that matter here
 
-- No colours in Python. Every colour is a key in `config/serv.toml`, and the
+- No colors in Python. Every color is a key in `config/serv.toml`, and the
   prebuilt palettes are data in `config/schemes.toml`; `theme.py` turns the
   active ones into `:root` custom properties and `data/style/serv.css`
   references them with `var(--…)`.
@@ -29,8 +31,13 @@
   `launchctl kickstart -k gui/$(id -u)/local.serv`.
 - Use `deal` contracts at data-flow boundaries (see `paths.py`, `config.py`,
   `cache.py`). When a validator takes `result`, name the parameter `result`.
-- `@objc.python_method` is required on every helper in the AppKit controller;
-  anything without it is treated as an Objective-C selector.
+- The UI is Tk and the tray is pystray, on every platform. Neither imports
+  AppKit directly; macOS-specific code is limited to the template tray image and
+  the launchd login item.
+- The settings window runs as its own process (`serv --settings`). Do not move
+  it into the server process: Tk and pystray both need the main thread there.
+- Toolkits take colors as `#rrggbb` without alpha: use `colors.hex_for_picker`
+  to composite translucency instead of inventing a second palette.
 
 ## Checks before handing work back
 

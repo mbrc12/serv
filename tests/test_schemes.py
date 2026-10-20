@@ -1,4 +1,4 @@
-"""Prebuilt colour schemes."""
+"""Prebuilt color schemes."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ def test_bundled_schemes_are_valid_and_complete() -> None:
     for scheme in bundled:
         assert scheme.key and scheme.label
         assert scheme.palette.bg.startswith("#")
-        assert len(scheme.colours()) == 25
+        assert len(scheme.colors()) == 25
 
 
 def test_default_config_matches_the_first_scheme() -> None:
@@ -24,7 +24,7 @@ def test_default_config_matches_the_first_scheme() -> None:
     assert schemes.name_for(load_config()) == first.key
 
 
-def test_applying_a_scheme_replaces_only_colours() -> None:
+def test_applying_a_scheme_replaces_only_colors() -> None:
     config = load_config()
     dark = next(scheme for scheme in schemes.load_schemes() if scheme.key == "tokyo-night")
     applied = schemes.apply(config, dark)
