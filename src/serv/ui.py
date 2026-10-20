@@ -32,6 +32,7 @@ from .units import format_length, slider_for, snap
 WINDOW_WIDTH = 700
 MIN_WINDOW_HEIGHT = 420
 SWATCH_COLUMNS = 3
+LABEL_WIDTH = 150
 SYSTEM_FONT_ITEM = "System font…"
 
 #: Called with the saved config so an in-process server can apply it.
@@ -222,22 +223,51 @@ class SettingsWindow:
             foreground=self.muted,
         ).grid(row=1, column=1, sticky="nw")
 
+    def _form_row(
+        self,
+        parent: ttk.Frame,
+        row: int,
+        caption: str,
+        build: Callable[[ttk.Frame], tk.Widget],
+        *,
+        align: str = "w",
+    ) -> tk.Widget:
+        """Place a caption and its control on one row, on a shared center line.
+
+        The control is created inside the row frame by `build`, so the caption
+        and the control share one grid row and one vertical center.
+        """
+        line = ttk.Frame(parent)
+        line.grid(row=row, column=0, sticky="ew", pady=4)
+        parent.columnconfigure(0, weight=1)
+        line.columnconfigure(0, minsize=LABEL_WIDTH)
+        if align == "e":
+            line.columnconfigure(1, weight=1)
+        ttk.Label(line, text=caption).grid(row=0, column=0, sticky="w")
+        control = build(line)
+        control.grid(row=0, column=1, sticky=align)
+        return control
+
     def _build_general(self, parent: ttk.Frame) -> None:
-        parent.columnconfigure(1, weight=1)
         rows = (
             ("server.port", "Port", ""),
             ("server.max_render_bytes", "Largest rendered file", "MB"),
             ("cache.entries", "Cached pages", ""),
         )
         for index, (key, caption, unit) in enumerate(rows):
-            ttk.Label(parent, text=caption).grid(row=index, column=0, sticky="w", pady=4)
             variable = tk.StringVar(value=self._display_value(key))
-            holder = ttk.Frame(parent)
-            holder.grid(row=index, column=1, sticky="w", pady=4)
-            entry = ttk.Entry(holder, textvariable=variable, width=10, justify="right")
-            entry.pack(side="left")
-            if unit:
-                ttk.Label(holder, text=unit, foreground=self.muted).pack(side="left", padx=(6, 0))
+
+            def build(line, variable=variable, unit=unit):
+                holder = ttk.Frame(line)
+                entry = ttk.Entry(holder, textvariable=variable, width=10, justify="right")
+                entry.pack(side="left")
+                if unit:
+                    ttk.Label(holder, text=unit, foreground=self.muted).pack(
+                        side="left", padx=(6, 0)
+                    )
+                return holder
+
+            self._form_row(parent, index, caption, build)
             if key == "server.max_render_bytes":
                 self.megabyte_var = variable
             else:
@@ -245,16 +275,16 @@ class SettingsWindow:
 
         heading_row = len(rows)
         ttk.Label(parent, text="Served verbatim", font=_bold(self.base_font)).grid(
-            row=heading_row, column=0, sticky="w", pady=(16, 0)
+            row=heading_row, column=0, sticky="w", pady=(18, 0)
         )
         ttk.Label(
             parent,
             text="matched files are sent as-is, without rendering",
             foreground=self.muted,
-        ).grid(row=heading_row + 1, column=0, columnspan=2, sticky="w")
+        ).grid(row=heading_row + 1, column=0, sticky="w", pady=(0, 2))
 
         self.glob_frame = ttk.Frame(parent)
-        self.glob_frame.grid(row=heading_row + 2, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        self.glob_frame.grid(row=heading_row + 2, column=0, sticky="ew", pady=(6, 0))
         self.glob_frame.columnconfigure(0, weight=1)
         self._render_globs()
 
@@ -263,7 +293,7 @@ class SettingsWindow:
         )
         ttk.Checkbutton(
             parent, text="Start serv at login", variable=self.login_var
-        ).grid(row=heading_row + 4, column=0, columnspan=2, sticky="w", pady=(18, 0))
+        ).grid(row=heading_row + 4, column=0, sticky="w", pady=(18, 0))
 
     def _display_value(self, key: str) -> str:
         """Return a config value as it should appear in a text field."""
@@ -311,31 +341,26 @@ class SettingsWindow:
             )
 
     def _build_colors(self, parent: ttk.Frame) -> None:
-        parent.columnconfigure(1, weight=1)
-        ttk.Label(parent, text="Scheme").grid(row=0, column=0, sticky="w", padx=(0, 10))
-
         current = schemes.name_for_values(self.values)
-        self.scheme_key = tk.StringVar(value=current)
-        self.scheme_label = tk.StringVar(value=schemes.label_for(current))
-        button = ttk.Menubutton(parent, textvariable=self.scheme_label, width=26)
-        menu = tk.Menu(button, tearoff=False)
-        # One flat list in file order: families together, light before dark.
-        for scheme in schemes.load_schemes():
-            menu.add_radiobutton(
-                label=scheme.label,
-                value=scheme.key,
-                variable=self.scheme_key,
-                command=lambda chosen=scheme: self._apply_scheme(chosen),
+        self.scheme_labels = {scheme.label: scheme for scheme in schemes.load_schemes()}
+        self.scheme_var = tk.StringVar(value=schemes.label_for(current))
+
+        def build_scheme(line):
+            combo = ttk.Combobox(
+                line,
+                textvariable=self.scheme_var,
+                values=[*self.scheme_labels, schemes.label_for(schemes.CUSTOM)],
+                state="readonly",
+                width=24,
             )
-        menu.add_separator()
-        menu.add_radiobutton(
-            label=schemes.label_for(schemes.CUSTOM),
-            value=schemes.CUSTOM,
-            variable=self.scheme_key,
-        )
-        button["menu"] = menu
-        button.grid(row=0, column=1, sticky="w", pady=(0, 4))
-        self.scheme_button = button
+            combo.bind("<<ComboboxSelected>>", self._scheme_changed)
+            self.scheme_combo = combo
+            return combo
+
+        self._form_row(parent, 0, "Scheme", build_scheme)
+        # A focused combobox paints a blue indicator on macOS; let the group
+        # heading take the initial focus instead.
+        parent.after_idle(self.notebook.focus_set)
 
         row = 1
         for title, section, mapping in (
@@ -344,30 +369,40 @@ class SettingsWindow:
             ("Source", "code", self.config.code),
         ):
             ttk.Label(parent, text=title, font=_bold(self.base_font)).grid(
-                row=row, column=0, columnspan=2, sticky="w", pady=(12, 2)
+                row=row, column=0, sticky="w", pady=(16, 6)
             )
             row += 1
             grid = ttk.Frame(parent)
-            grid.grid(row=row, column=0, columnspan=2, sticky="w")
+            grid.grid(row=row, column=0, sticky="w")
             row += 1
             for index, field in enumerate(fields(mapping)):
                 key = f"{section}.{field.name}"
                 cell = ttk.Frame(grid)
-                # Natural widths: a fixed cell size clips the longer labels such
-                # as "Text on selection".
                 cell.grid(
                     row=index // SWATCH_COLUMNS,
                     column=index % SWATCH_COLUMNS,
                     sticky="w",
-                    padx=(0, 26),
+                    padx=(0, 20),
                     pady=3,
                 )
-                canvas = tk.Canvas(cell, width=26, height=26, highlightthickness=0, cursor="hand2")
-                canvas.pack(side="left", padx=(0, 7))
-                _draw_swatch(canvas, hex_for_picker(self.values[key]))
-                canvas.bind("<Button-1>", lambda _event, name=key: self._pick_color(name))
-                ttk.Label(cell, text=labels.label_for(section, field.name)).pack(side="left")
-                self.swatches[key] = canvas
+                swatch = tk.Canvas(
+                    cell, width=26, height=26, highlightthickness=0, cursor="hand2"
+                )
+                swatch.pack(side="left", padx=(0, 8))
+                _draw_swatch(swatch, hex_for_picker(self.values[key]))
+                swatch.bind("<Button-1>", lambda _event, name=key: self._pick_color(name))
+                ttk.Label(cell, text=labels.label_for(section, field.name)).pack(
+                    side="left"
+                )
+                self.swatches[key] = swatch
+            for column in range(SWATCH_COLUMNS):
+                grid.columnconfigure(column, minsize=208)
+
+    def _scheme_changed(self, _event=None) -> None:
+        """Apply the scheme picked in the dropdown."""
+        scheme = self.scheme_labels.get(self.scheme_var.get())
+        if scheme is not None:
+            self._apply_scheme(scheme)
 
     def _apply_scheme(self, scheme: schemes.Scheme) -> None:
         """Copy a scheme's colors into the draft and repaint the swatches."""
@@ -390,53 +425,55 @@ class SettingsWindow:
     def _refresh_swatches(self) -> None:
         for key, canvas in self.swatches.items():
             _draw_swatch(canvas, hex_for_picker(self.values[key]))
-        key = schemes.name_for_values(self.values)
-        self.scheme_key.set(key)
-        self.scheme_label.set(schemes.label_for(key))
+        self.scheme_var.set(schemes.label_for(schemes.name_for_values(self.values)))
 
     def _build_typography(self, parent: ttk.Frame) -> None:
-        # Column 0 takes the slack, so every control sits against the right edge
-        # while its label stays on the left.
-        parent.columnconfigure(0, weight=1)
         row = 0
         for role, caption in (("reading", "Reading font"), ("mono", "Monospace font")):
-            ttk.Label(parent, text=caption).grid(row=row, column=0, sticky="w", pady=4)
             options = [*self._catalogue_names(role), SYSTEM_FONT_ITEM]
-            current = SYSTEM_FONT_ITEM if self.local_font[role] else self.values[f"type.{role}"]
+            current = (
+                SYSTEM_FONT_ITEM if self.local_font[role] else self.values[f"type.{role}"]
+            )
             variable = tk.StringVar(value=current)
-            combo = ttk.Combobox(
-                parent, textvariable=variable, values=options, state="readonly", width=30
-            )
-            combo.grid(row=row, column=1, sticky="e", pady=4)
-            combo.bind(
-                "<<ComboboxSelected>>", lambda _event, name=role: self._font_choice_changed(name)
-            )
+
+            def build(line, role=role, options=options, variable=variable):
+                combo = ttk.Combobox(
+                    line, textvariable=variable, values=options, state="readonly", width=30
+                )
+                combo.bind(
+                    "<<ComboboxSelected>>",
+                    lambda _event, name=role: self._font_choice_changed(name),
+                )
+                return combo
+
+            self._form_row(parent, row, caption, build, align="e")
             self.font_vars[role] = variable
             row += 1
 
             if self.local_font[role]:
                 # Only the families actually installed here, so the long list
                 # appears solely for someone who asked for a system font.
-                ttk.Label(parent, text="Installed", foreground=self.muted).grid(
-                    row=row, column=0, sticky="w", padx=(16, 0), pady=(0, 4)
-                )
                 installed = self._installed_families(self.root)
                 family = self.values[f"type.{role}"]
                 if family not in installed:
                     installed.insert(0, family)
                 system_variable = tk.StringVar(value=family)
-                system_combo = ttk.Combobox(
-                    parent,
-                    textvariable=system_variable,
-                    values=installed,
-                    state="readonly",
-                    width=30,
-                )
-                system_combo.grid(row=row, column=1, sticky="e", pady=(0, 4))
-                system_combo.bind(
-                    "<<ComboboxSelected>>",
-                    lambda _event, name=role: self._system_font_changed(name),
-                )
+
+                def build_system(line, role=role, installed=installed, system_variable=system_variable):
+                    combo = ttk.Combobox(
+                        line,
+                        textvariable=system_variable,
+                        values=installed,
+                        state="readonly",
+                        width=30,
+                    )
+                    combo.bind(
+                        "<<ComboboxSelected>>",
+                        lambda _event, name=role: self._system_font_changed(name),
+                    )
+                    return combo
+
+                self._form_row(parent, row, "Installed", build_system, align="e")
                 self.system_font_vars[role] = system_variable
                 row += 1
 
@@ -459,19 +496,24 @@ class SettingsWindow:
             ),
         ):
             ttk.Label(parent, text=title, font=_bold(self.base_font)).grid(
-                row=row, column=0, columnspan=2, sticky="w", pady=(14, 2)
+                row=row, column=0, sticky="w", pady=(18, 4)
             )
             row += 1
             for key, caption in keys:
-                ttk.Label(parent, text=caption).grid(row=row, column=0, sticky="w", pady=3)
-                row = self._add_slider(parent, key, row)
+                row = self._add_slider(parent, key, row, caption)
 
-    def _add_slider(self, parent: ttk.Frame, key: str, row: int) -> int:
+    def _add_slider(self, parent: ttk.Frame, key: str, row: int, caption: str) -> int:
         spec = slider_for(key, self.values.get(key, ""))
         if spec is None:
             variable = tk.StringVar(value=self.values.get(key, ""))
-            ttk.Entry(parent, textvariable=variable, width=14, justify="right").grid(
-                row=row, column=1, sticky="e", pady=3
+            self._form_row(
+                parent,
+                row,
+                caption,
+                lambda line: ttk.Entry(
+                    line, textvariable=variable, width=14, justify="right"
+                ),
+                align="e",
             )
             self.text_vars[key] = variable
             return row + 1
@@ -479,20 +521,24 @@ class SettingsWindow:
         minimum, maximum, step, unit, value = spec
         variable = tk.DoubleVar(value=value)
         readout = tk.StringVar(value=format_length(value, unit))
-        holder = ttk.Frame(parent)
-        holder.grid(row=row, column=1, sticky="e", pady=3)
-        scale = ttk.Scale(
-            holder,
-            from_=minimum,
-            to=maximum,
-            variable=variable,
-            length=210,
-            command=lambda new_value, k=key: self._slider_moved(k, new_value),
-        )
-        scale.pack(side="left")
-        ttk.Label(holder, textvariable=readout, width=7, anchor="e", foreground=self.muted).pack(
-            side="left", padx=(8, 0)
-        )
+
+        def build(line):
+            holder = ttk.Frame(line)
+            scale = ttk.Scale(
+                holder,
+                from_=minimum,
+                to=maximum,
+                variable=variable,
+                length=210,
+                command=lambda new_value, k=key: self._slider_moved(k, new_value),
+            )
+            scale.pack(side="left")
+            ttk.Label(
+                holder, textvariable=readout, width=7, anchor="e", foreground=self.muted
+            ).pack(side="left", padx=(10, 0))
+            return holder
+
+        self._form_row(parent, row, caption, build, align="e")
         self.slider_vars[key] = variable
         self.slider_labels[key] = readout
         return row + 1

@@ -61,15 +61,16 @@ def test_glob_rows_can_be_added_and_removed(window) -> None:
 
 def test_scheme_selection_replaces_colors(window) -> None:
     dark = next(scheme for scheme in load_schemes() if scheme.key == "tokyo-night")
-    window._apply_scheme(dark)
+    window.scheme_var.set(dark.label)
+    window._scheme_changed()
     assert window.values["palette.bg"] == dark.palette.bg
-    assert window.scheme_label.get() == dark.label
+    assert window.scheme_var.get() == dark.label
 
 
 def test_editing_a_color_marks_the_scheme_custom(window) -> None:
     window.values["palette.bg"] = "#123456"
     window._refresh_swatches()
-    assert window.scheme_label.get() == label_for(CUSTOM)
+    assert window.scheme_var.get() == label_for(CUSTOM)
 
 
 def test_slider_values_reach_the_config(window) -> None:
