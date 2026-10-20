@@ -188,8 +188,8 @@ def copy_data() -> None:
         ignore=shutil.ignore_patterns("__pycache__", ".DS_Store"),
     )
     (RESOURCES / "config").mkdir(parents=True, exist_ok=True)
-    for name in ("serv.toml", "schemes.toml"):
-        shutil.copyfile(ROOT / "config" / name, RESOURCES / "config" / name)
+    for source in sorted((ROOT / "config").glob("*.toml")):
+        shutil.copyfile(source, RESOURCES / "config" / source.name)
 
 
 def build_icon() -> None:

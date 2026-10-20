@@ -81,10 +81,14 @@ startup; a bad colour or size stops the server with a clear message.
 | `palette` | `bg`, `text`, `muted`, `border`, `hover`, `selected`, `zebra`, `red`, `orange`, `green`, `blue`, `teal`, `purple` |
 | `accents` | `markdown`, `listing`, `directory` |
 | `code` | `base`, `comment`, `keyword`, `operator`, `string`, `function`, `number`, `tag`, `highlight` |
-| `type` | `reading`, `mono`, `md_size`, `md_table`, `code_size` |
+| `type` | `reading`, `mono`, `reading_weights`, `mono_weights`, `md_size`, `md_table`, `code_size` |
 | `layout` | `md_width`, `md_gutter`, `listing_width` |
 
-The Colours section of the settings window has a **Scheme** dropdown with
+The Type & Layout section picks fonts from a curated Google Fonts list
+(`config/fonts.toml`) or from the macOS font panel; a locally installed family
+skips the web-font request by leaving its `*_weights` value empty.
+
+The Colours section has a **Scheme** dropdown with
 prebuilt palettes (Tokyo Night Day, Tokyo Night, Catppuccin Latte and Mocha,
 Gruvbox Light, Nord, Solarized Light and Dark). Picking one copies its colours
 into the fields; editing any swatch afterwards switches the dropdown to

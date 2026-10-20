@@ -40,6 +40,7 @@ _COLOR = re.compile(
 )
 CSS_LENGTH = re.compile(r"^(?:\d+(?:\.\d+)?)(?:px|rem|em|ch|%)$")
 FONT_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9 \-]*$")
+FONT_WEIGHTS = re.compile(r"^(?:[a-z]+(?:,[a-z]+)*@[0-9;,]+)?$")
 
 
 class ConfigError(ValueError):
@@ -106,9 +107,13 @@ class CodePalette:
 class Typography:
     reading: str
     mono: str
-    md_size: str
-    md_table: str
-    code_size: str
+    # Google Fonts axis query for each family. Empty means "a font installed on
+    # this Mac": the stylesheet then uses the family name without an import.
+    reading_weights: str = "ital,wght@0,400;0,600;1,400"
+    mono_weights: str = "wght@400;600"
+    md_size: str = "1.2rem"
+    md_table: str = "1.1rem"
+    code_size: str = "12px"
 
 
 @dataclass(frozen=True)
@@ -213,6 +218,16 @@ def _glob_list(value: object, where: str) -> tuple[str, ...]:
     return tuple(patterns)
 
 
+def _weights(section: dict, key: str, where: str) -> str | None:
+    """Read a weights query; None means the key is absent (derive it)."""
+    if key not in section:
+        return None
+    value = section[key]
+    if not isinstance(value, str) or not FONT_WEIGHTS.match(value):
+        raise ConfigError(f"{where}.{key} is not a Google Fonts weights query: {value!r}")
+    return value
+
+
 def _integer(value: object, where: str, minimum: int, maximum: int) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ConfigError(f"{where} must be an integer, got {value!r}")
@@ -233,6 +248,20 @@ def parse_config(data: dict, source: Path | None = None) -> Config:
     typography = _require_mapping(data.get("type"), "type")
     layout = _require_mapping(data.get("layout"), "layout")
 
+    reading = _font(typography, "reading", "type")
+    mono = _font(typography, "mono", "type")
+    reading_weights = _weights(typography, "reading_weights", "type")
+    mono_weights = _weights(typography, "mono_weights", "type")
+    if reading_weights is None or mono_weights is None:
+        # Configs written before the weights keys existed: derive them from the
+        # font catalogue, so a known Google family still loads its webfont.
+        from . import fonts as font_catalogue
+
+        if reading_weights is None:
+            reading_weights = font_catalogue.weights_for("reading", reading) or ""
+        if mono_weights is None:
+            mono_weights = font_catalogue.weights_for("mono", mono) or ""
+
     return Config(
         server=ServerSection(
             port=_integer(server.get("port", 1002), "server.port", 1, 65535),
@@ -251,8 +280,10 @@ def parse_config(data: dict, source: Path | None = None) -> Config:
         accents=Accents(**{key: _color(accents, key, "accents") for key in Accents.__annotations__}),
         code=CodePalette(**{key: _color(code, key, "code") for key in CodePalette.__annotations__}),
         type=Typography(
-            reading=_font(typography, "reading", "type"),
-            mono=_font(typography, "mono", "type"),
+            reading=reading,
+            mono=mono,
+            reading_weights=reading_weights,
+            mono_weights=mono_weights,
             md_size=_length(typography, "md_size", "type"),
             md_table=_length(typography, "md_table", "type"),
             code_size=_length(typography, "code_size", "type"),
@@ -349,6 +380,10 @@ def dump_config(config: Config) -> str:
         "[type]",
         f"reading   = {_quote(config.type.reading)}",
         f"mono      = {_quote(config.type.mono)}",
+        "# Google Fonts axis queries. Leave empty to use a font installed on this",
+        "# Mac instead of downloading one.",
+        f"reading_weights = {_quote(config.type.reading_weights)}",
+        f"mono_weights    = {_quote(config.type.mono_weights)}",
         f"md_size   = {_quote(config.type.md_size)}",
         f"md_table  = {_quote(config.type.md_table)}",
         f"code_size = {_quote(config.type.code_size)}",

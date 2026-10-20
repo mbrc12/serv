@@ -49,6 +49,9 @@ highlight = "rgba(113, 70, 166, 0.16)"
 [type]
 reading   = "Crimson Pro"
 mono      = "Fira Code"
+# Google Fonts axis queries; leave empty to use a font installed on this Mac.
+reading_weights = "ital,wght@0,400;0,600;1,400"
+mono_weights    = "wght@400;600"
 md_size   = "1.2rem"
 md_table  = "1.1rem"
 code_size = "12px"

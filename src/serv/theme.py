@@ -49,8 +49,6 @@ VARIABLE_SECTIONS = (
 )
 
 GOOGLE_FONTS = "https://fonts.googleapis.com/css2"
-READING_WEIGHTS = "0,400;0,600;1,400"
-MONO_WEIGHTS = "0,400;0,600"
 
 
 def _variable_name(section: str, key: str) -> str:
@@ -62,17 +60,32 @@ def _variable_name(section: str, key: str) -> str:
     return f"--{section}-{key}"
 
 
+def _import_line(name: str, weights: str) -> str | None:
+    """Return one @import for a Google family, or None for a local font."""
+    family = name.replace(" ", "+")
+    if not weights:
+        return None
+    return f"@import url('{GOOGLE_FONTS}?family={family}:{weights}&display=swap');"
+
+
 def font_imports(config: Config) -> str:
-    """Return the @import lines for the two configured families."""
-    reading = config.type.reading.replace(" ", "+")
-    mono = config.type.mono.replace(" ", "+")
-    return (
-        f"@import url('{GOOGLE_FONTS}?family={reading}:ital,wght@{READING_WEIGHTS}&display=swap');\n"
-        f"@import url('{GOOGLE_FONTS}?family={mono}:wght@{MONO_WEIGHTS}&display=swap');"
-    )
+    """Return the @import lines for the two configured families.
+
+    A family with no weights query is an installed font, so nothing is
+    downloaded; the stylesheet's font-family declaration finds it locally.
+    """
+    lines = [
+        line
+        for line in (
+            _import_line(config.type.reading, config.type.reading_weights),
+            _import_line(config.type.mono, config.type.mono_weights),
+        )
+        if line
+    ]
+    return "\n".join(lines) if lines else "/* no web fonts configured */"
 
 
-@deal.ensure(lambda config, result: result.startswith("@import url("), message="stylesheet must start with the font imports")
+@deal.ensure(lambda config, result: result.startswith(("@import url(", "/* no web fonts")), message="stylesheet must start with the font rules")
 @deal.ensure(lambda config, result: config.palette.bg in result, message="stylesheet must use the configured background")
 def stylesheet(config: Config) -> str:
     """Return the complete stylesheet for this configuration."""

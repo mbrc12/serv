@@ -34,6 +34,7 @@ from AppKit import (
     NSColorPanel,
     NSColorSpace,
     NSFont,
+    NSFontManager,
     NSImage,
     NSImageView,
     NSImageScaleProportionallyUpOrDown,
@@ -52,7 +53,7 @@ from AppKit import (
 )
 from Foundation import NSObject
 
-from . import launchagent, schemes
+from . import fonts, launchagent, schemes
 from .config import Config, ConfigError, load_config, parse_config, save_config
 from .locations import user_config_path
 from .resources import data_dir
@@ -63,6 +64,9 @@ MARGIN = 20
 CARD_TOP = WINDOW_HEIGHT - 118
 CARD_HEIGHT = CARD_TOP - 70
 CARD_INSET = 18
+
+#: Label of the popup entry that opens the system font panel.
+SYSTEM_FONT_ITEM = "System font…"
 
 #: Called with the saved config so a running server can apply it.
 SaveCallback = Callable[[Config], None]
@@ -281,6 +285,8 @@ class SettingsController(NSObject):
         self._fields: dict[str, NSTextField] = {}
         self._swatches: dict[str, SwatchView] = {}
         self._glob_fields: list[NSTextField] = []
+        self._font_popups: dict[str, NSPopUpButton] = {}
+        self._font_role: str | None = None
         self._login_checkbox = None
         self._standalone = False
         # Draft values survive a section switch, so a tab change never loses an
@@ -522,9 +528,15 @@ class SettingsController(NSObject):
     def _render_type(self) -> None:
         card = self._card.contentView()
         width = WINDOW_WIDTH - 2 * MARGIN
+        y = CARD_INSET - 2
+        for role, caption in (("reading", "Reading font"), ("mono", "Monospace font")):
+            label = _label(caption)
+            label.setFrame_(NSMakeRect(CARD_INSET, y + 5, 240, 18))
+            card.addSubview_(label)
+            card.addSubview_(self._font_popup(role, y))
+            y += 30
+
         rows = (
-            ("type.reading", "Reading font", 170),
-            ("type.mono", "Monospace font", 170),
             ("type.md_size", "Markdown size", 96),
             ("type.md_table", "Table size", 96),
             ("type.code_size", "Code size", 96),
@@ -532,7 +544,6 @@ class SettingsController(NSObject):
             ("layout.md_gutter", "Markdown gutter", 96),
             ("layout.listing_width", "Listing width", 96),
         )
-        y = CARD_INSET - 2
         for key, caption, field_width in rows:
             label = _label(caption)
             label.setFrame_(NSMakeRect(CARD_INSET, y + 3, 240, 18))
@@ -544,6 +555,60 @@ class SettingsController(NSObject):
             y += 30
 
     # -------------------------------------------------------------- actions
+
+    @objc.python_method
+    def _font_popup(self, role: str, y: float) -> NSPopUpButton:
+        """Return a popup listing the catalogue for a role plus the system panel."""
+        width = WINDOW_WIDTH - 2 * MARGIN
+        catalogue = fonts.choices_for(role)
+        names = [choice.name for choice in catalogue]
+        current = self._draft.get(f"type.{role}", "")
+        items = list(names)
+        if current and current not in items:
+            items.insert(0, current)
+        items.append(SYSTEM_FONT_ITEM)
+
+        popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
+            NSMakeRect(width - CARD_INSET - 240, y, 240, 26), False
+        )
+        popup.addItemsWithTitles_(items)
+        popup.selectItemWithTitle_(current if current in items else SYSTEM_FONT_ITEM)
+        popup.setTarget_(self)
+        popup.setAction_("fontRoleChanged:")
+        self._font_popups[role] = popup
+        return popup
+
+    def fontRoleChanged_(self, sender) -> None:  # noqa: N802 - ObjC selector
+        role = next((key for key, popup in self._font_popups.items() if popup is sender), None)
+        if role is None:
+            return
+        title = sender.titleOfSelectedItem()
+        if title == SYSTEM_FONT_ITEM:
+            self._font_role = role
+            manager = NSFontManager.sharedFontManager()
+            manager.setTarget_(self)
+            manager.setAction_("systemFontChanged:")
+            manager.orderFrontFontPanel_(None)
+            return
+        choice = next((entry for entry in fonts.choices_for(role) if entry.name == title), None)
+        if choice is None:
+            return
+        self._draft[f"type.{role}"] = choice.name
+        self._draft[f"type.{role}_weights"] = choice.weights
+
+    def systemFontChanged_(self, sender) -> None:  # noqa: N802 - ObjC selector
+        """Apply a family chosen in the system font panel."""
+        role = self._font_role
+        if role is None:
+            return
+        chosen = sender.convertFont_(NSFont.systemFontOfSize_(13))
+        family = chosen.familyName() if chosen is not None else None
+        if not family:
+            return
+        self._draft[f"type.{role}"] = family
+        # A family from the panel may also be a Google font; keep its import.
+        self._draft[f"type.{role}_weights"] = fonts.weights_for(role, family) or ""
+        self._render_section()
 
     @objc.python_method
     def _stash(self) -> None:

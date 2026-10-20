@@ -18,6 +18,9 @@
   prebuilt palettes are data in `config/schemes.toml`; `theme.py` turns the
   active ones into `:root` custom properties and `data/style/serv.css`
   references them with `var(--…)`.
+- Font choices are data in `config/fonts.toml`. Each entry carries the Google
+  Fonts axis query it needs; an empty `*_weights` value means "installed font,
+  no download". Add a family only after checking its CSS URL returns 200.
 - No vendored web libraries. Prism, KaTeX, fonts, RDKit.js and Mermaid come from
   pinned CDN URLs inside the plugins, and only on pages that need them.
 - The installed app is `~/Applications/serv.app` with plain `.py` sources under
