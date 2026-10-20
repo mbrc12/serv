@@ -35,7 +35,7 @@ SYSTEMD_UNIT = "serv.service"
 DESKTOP_FILE = "serv.desktop"
 WINDOWS_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
-AGENT_FLAG = "--agent"
+AGENT_FLAG = "--no-gui"
 
 
 # ------------------------------------------------------------------- commands
@@ -93,7 +93,8 @@ def plist_contents(working_directory: Path | None = None) -> bytes:
         "WorkingDirectory": str(working_directory or Path.home()),
         "EnvironmentVariables": {"PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"},
         "RunAtLoad": True,
-        "KeepAlive": True,
+        # No KeepAlive: quitting the tray must not be undone by launchd.
+        "KeepAlive": False,
         "StandardOutPath": str(stdout),
         "StandardErrorPath": str(stderr),
         "ProcessType": "Interactive",

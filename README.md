@@ -34,9 +34,15 @@ Source checkout: `~/dev/serv/` (`src/serv/`, `data/`, `config/`, `tests/`,
 
 ## Running
 
-- The login item starts the app with `--agent`: server plus tray, no window.
-- Launching the app opens the settings window as well. Closing that window
-  leaves the tray running (the window is its own process, `serv --settings`).
+- The tray owns the server in one process: starting the tray starts the server,
+  quitting the tray (Quit serv) stops it.
+- The login item runs the same app with `--no-gui`: tray and server, no window.
+  It has no `KeepAlive`, so quitting stays quit until the next login.
+- Launching the app adds `--app`, which opens the settings window too. Closing
+  that window leaves the tray running (the window is its own process,
+  `serv --settings`).
+- A second copy cannot share the port: it reports the conflict in a dialog and
+  exits.
 - The tray menu: status, Open in Browser, Copy URL, Pause/Resume, Start at
   login, cache counters, last error, Settings…, Quit.
 
