@@ -1,0 +1,280 @@
+# Prebuilt colour schemes shown in the settings window's Colours section.
+#
+# Picking one copies these values into the palette, accents and code sections of
+# ~/.config/serv/serv.toml; the file stays the single source of truth. A scheme
+# must define every colour serv uses, otherwise it is rejected at startup.
+#
+# The first scheme matches config/serv.toml, so "Tokyo Night Day" is what a new
+# installation uses.
+
+[schemes.tokyo-night-day]
+label = "Tokyo Night Day"
+
+[schemes.tokyo-night-day.palette]
+bg = "#e1e2e7"
+text = "#343746"
+muted = "#6172b0"
+border = "#c4c8da"
+hover = "#d0d5e3"
+selected = "#b7c1e3"
+zebra = "transparent"
+red = "#f52a65"
+orange = "#b15c00"
+green = "#587539"
+blue = "#2e7de9"
+teal = "#007197"
+purple = "#7146a6"
+
+[schemes.tokyo-night-day.accents]
+markdown = "#7146a6"
+listing = "#7146a6"
+directory = "#2e7de9"
+
+[schemes.tokyo-night-day.code]
+base = "#403a36"
+comment = "#6a6258"
+keyword = "#a64b00"
+operator = "#9b1c31"
+string = "#1f6b3a"
+function = "#3152a0"
+number = "#7136a2"
+tag = "#006d69"
+highlight = "rgba(113, 70, 166, 0.16)"
+
+[schemes.tokyo-night]
+label = "Tokyo Night"
+
+[schemes.tokyo-night.palette]
+bg = "#1a1b26"
+text = "#c0caf5"
+muted = "#7aa2f7"
+border = "#3b4261"
+hover = "#292e42"
+selected = "#364a82"
+zebra = "transparent"
+red = "#f7768e"
+orange = "#ff9e64"
+green = "#9ece6a"
+blue = "#7aa2f7"
+teal = "#7dcfff"
+purple = "#bb9af7"
+
+[schemes.tokyo-night.accents]
+markdown = "#bb9af7"
+listing = "#bb9af7"
+directory = "#7aa2f7"
+
+[schemes.tokyo-night.code]
+base = "#c0caf5"
+comment = "#565f89"
+keyword = "#bb9af7"
+operator = "#89ddff"
+string = "#9ece6a"
+function = "#7aa2f7"
+number = "#ff9e64"
+tag = "#73daca"
+highlight = "rgba(187, 154, 247, 0.18)"
+
+[schemes.catppuccin-latte]
+label = "Catppuccin Latte"
+
+[schemes.catppuccin-latte.palette]
+bg = "#eff1f5"
+text = "#4c4f69"
+muted = "#7287fd"
+border = "#ccd0da"
+hover = "#dce0e8"
+selected = "#bcc0cc"
+zebra = "transparent"
+red = "#d20f39"
+orange = "#fe640b"
+green = "#40a02b"
+blue = "#1e66f5"
+teal = "#179299"
+purple = "#8839ef"
+
+[schemes.catppuccin-latte.accents]
+markdown = "#8839ef"
+listing = "#8839ef"
+directory = "#1e66f5"
+
+[schemes.catppuccin-latte.code]
+base = "#4c4f69"
+comment = "#8c8fa1"
+keyword = "#8839ef"
+operator = "#04a5e5"
+string = "#40a02b"
+function = "#1e66f5"
+number = "#fe640b"
+tag = "#179299"
+highlight = "rgba(136, 57, 239, 0.14)"
+
+[schemes.catppuccin-mocha]
+label = "Catppuccin Mocha"
+
+[schemes.catppuccin-mocha.palette]
+bg = "#1e1e2e"
+text = "#cdd6f4"
+muted = "#89b4fa"
+border = "#45475a"
+hover = "#313244"
+selected = "#585b70"
+zebra = "transparent"
+red = "#f38ba8"
+orange = "#fab387"
+green = "#a6e3a1"
+blue = "#89b4fa"
+teal = "#94e2d5"
+purple = "#cba6f7"
+
+[schemes.catppuccin-mocha.accents]
+markdown = "#cba6f7"
+listing = "#cba6f7"
+directory = "#89b4fa"
+
+[schemes.catppuccin-mocha.code]
+base = "#cdd6f4"
+comment = "#6c7086"
+keyword = "#cba6f7"
+operator = "#89dceb"
+string = "#a6e3a1"
+function = "#89b4fa"
+number = "#fab387"
+tag = "#94e2d5"
+highlight = "rgba(203, 166, 247, 0.18)"
+
+[schemes.gruvbox-light]
+label = "Gruvbox Light"
+
+[schemes.gruvbox-light.palette]
+bg = "#fbf1c7"
+text = "#3c3836"
+muted = "#7c6f64"
+border = "#d5c4a1"
+hover = "#ebdbb2"
+selected = "#d5c4a1"
+zebra = "transparent"
+red = "#9d0006"
+orange = "#af3a03"
+green = "#79740e"
+blue = "#076678"
+teal = "#427b58"
+purple = "#8f3f71"
+
+[schemes.gruvbox-light.accents]
+markdown = "#8f3f71"
+listing = "#8f3f71"
+directory = "#076678"
+
+[schemes.gruvbox-light.code]
+base = "#3c3836"
+comment = "#928374"
+keyword = "#9d0006"
+operator = "#8f3f71"
+string = "#79740e"
+function = "#076678"
+number = "#b57614"
+tag = "#427b58"
+highlight = "rgba(143, 63, 113, 0.14)"
+
+[schemes.nord]
+label = "Nord"
+
+[schemes.nord.palette]
+bg = "#eceff4"
+text = "#2e3440"
+muted = "#5e81ac"
+border = "#d8dee9"
+hover = "#e5e9f0"
+selected = "#d8dee9"
+zebra = "transparent"
+red = "#bf616a"
+orange = "#d08770"
+green = "#a3be8c"
+blue = "#5e81ac"
+teal = "#8fbcbb"
+purple = "#b48ead"
+
+[schemes.nord.accents]
+markdown = "#b48ead"
+listing = "#b48ead"
+directory = "#5e81ac"
+
+[schemes.nord.code]
+base = "#2e3440"
+comment = "#4c566a"
+keyword = "#b48ead"
+operator = "#81a1c1"
+string = "#a3be8c"
+function = "#5e81ac"
+number = "#d08770"
+tag = "#8fbcbb"
+highlight = "rgba(180, 142, 173, 0.18)"
+
+[schemes.solarized-light]
+label = "Solarized Light"
+
+[schemes.solarized-light.palette]
+bg = "#fdf6e3"
+text = "#586e75"
+muted = "#93a1a1"
+border = "#eee8d5"
+hover = "#eee8d5"
+selected = "#e6dfc8"
+zebra = "transparent"
+red = "#dc322f"
+orange = "#cb4b16"
+green = "#859900"
+blue = "#268bd2"
+teal = "#2aa198"
+purple = "#6c71c4"
+
+[schemes.solarized-light.accents]
+markdown = "#6c71c4"
+listing = "#6c71c4"
+directory = "#268bd2"
+
+[schemes.solarized-light.code]
+base = "#586e75"
+comment = "#93a1a1"
+keyword = "#859900"
+operator = "#cb4b16"
+string = "#2aa198"
+function = "#268bd2"
+number = "#d33682"
+tag = "#6c71c4"
+highlight = "rgba(108, 113, 196, 0.16)"
+
+[schemes.solarized-dark]
+label = "Solarized Dark"
+
+[schemes.solarized-dark.palette]
+bg = "#002b36"
+text = "#93a1a1"
+muted = "#839496"
+border = "#073642"
+hover = "#073642"
+selected = "#0b4a5a"
+zebra = "transparent"
+red = "#dc322f"
+orange = "#cb4b16"
+green = "#859900"
+blue = "#268bd2"
+teal = "#2aa198"
+purple = "#6c71c4"
+
+[schemes.solarized-dark.accents]
+markdown = "#6c71c4"
+listing = "#6c71c4"
+directory = "#268bd2"
+
+[schemes.solarized-dark.code]
+base = "#93a1a1"
+comment = "#586e75"
+keyword = "#859900"
+operator = "#cb4b16"
+string = "#2aa198"
+function = "#268bd2"
+number = "#d33682"
+tag = "#6c71c4"
+highlight = "rgba(108, 113, 196, 0.22)"

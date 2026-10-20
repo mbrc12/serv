@@ -1,0 +1,59 @@
+# serv configuration. Every colour the server emits lives here; the Python
+# source only reads these keys. Restart the server after editing.
+
+[server]
+port = 1002
+# Absolute file paths matching any of these globs are served verbatim: no
+# Markdown rendering and no syntax highlighting. `**` crosses directories, and
+# a leading `~` means the home directory. Add one pattern per exception.
+no_process = ["~/dev/game/**/build/**"]
+# Files larger than this many bytes are served as plain text instead of being
+# rendered or highlighted, so one huge file cannot stall the server.
+max_render_bytes = 1048576
+
+[cache]
+# Rendered-Markdown entries kept in memory; each entry is one page of HTML.
+entries = 64
+
+[palette]                  # Tokyo Night Day surfaces
+bg        = "#e1e2e7"
+text      = "#343746"
+muted     = "#6172b0"
+border    = "#c4c8da"
+hover     = "#d0d5e3"
+selected  = "#b7c1e3"
+zebra     = "transparent"
+red       = "#f52a65"
+orange    = "#b15c00"
+green     = "#587539"
+blue      = "#2e7de9"
+teal      = "#007197"
+purple    = "#7146a6"
+
+[accents]                  # one accent per surface; md and listings both purple
+markdown  = "#7146a6"
+listing   = "#7146a6"
+directory = "#2e7de9"
+
+[code]                     # vivid, high-contrast tokens on the gray canvas
+base      = "#403a36"
+comment   = "#6a6258"
+keyword   = "#a64b00"
+operator  = "#9b1c31"
+string    = "#1f6b3a"
+function  = "#3152a0"
+number    = "#7136a2"
+tag       = "#006d69"
+highlight = "rgba(113, 70, 166, 0.16)"
+
+[type]
+reading   = "Crimson Pro"
+mono      = "Fira Code"
+md_size   = "1.2rem"
+md_table  = "1.1rem"
+code_size = "12px"
+
+[layout]
+md_width    = "46rem"
+md_gutter   = "3rem"
+listing_width = "46rem"

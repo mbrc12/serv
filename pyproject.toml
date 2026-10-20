@@ -1,0 +1,38 @@
+[project]
+name = "serv"
+version = "0.2.0"
+description = "Local static file server with in-process Markdown, highlighted source, math, chemistry and Mermaid"
+readme = "README.md"
+authors = [
+    { name = "Mriganka Basu Roy Chowdhury", email = "mbrc12@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "deal>=4.24.6",
+    "markdown-it-py>=4.2.0",
+    "mdit-py-plugins>=0.6.1",
+    "rumps>=0.4.0",
+]
+
+[project.scripts]
+serv = "serv.__main__:main"
+
+[build-system]
+requires = ["uv_build>=0.12.6,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+# The stylesheet and the default config ship with the package so `uv run serv`
+# behaves like the frozen binary; `assets/` is added by the PyInstaller spec.
+source-include = ["assets/**"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[dependency-groups]
+dev = [
+    "cairosvg>=2.9.1",
+    "pyinstaller>=6.22.3",
+    "pytest>=9.1.1",
+]

@@ -1,0 +1,503 @@
+/*
+ * serv stylesheet template.
+ *
+ * Every colour is a var(--…) reference; the :root block that defines them is
+ * generated from config/serv.toml by src/serv/theme.py. The placeholders below
+ * (${reading}, ${md_width}, …) come from the [type] and [layout] sections.
+ * This file is data, not code: it is served verbatim at /__serv__/style.css.
+ */
+
+html {
+  background: var(--bg);
+}
+
+body {
+  max-width: 60rem;
+  color: var(--text);
+  font-family: '${reading}', Georgia, 'Times New Roman', serif;
+  font-size: 1rem;
+  line-height: 1.65;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* ---------------------------------------------------------------- headings */
+
+h1, h2, h3, h4, h5, h6 {
+  color: var(--green);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+h1 { font-size: 2rem; }
+
+a, a:visited {
+  color: var(--green);
+}
+
+a:hover {
+  color: var(--teal);
+}
+
+a:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+img { max-width: 100%; }
+
+blockquote {
+  font-style: italic;
+}
+
+code, kbd, samp {
+  font-family: '${mono}', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.95rem;
+}
+
+pre {
+  padding: 0.75em 1em;
+  overflow-x: auto;
+}
+
+/* ----------------------------------------------------------- markdown page */
+
+body.markdown-page {
+  --red: var(--accent-markdown);
+  --orange: var(--accent-markdown);
+  --green: var(--accent-markdown);
+  --blue: var(--accent-markdown);
+  --teal: var(--accent-markdown);
+  --purple: var(--accent-markdown);
+  max-width: ${md_width};
+  padding: 0 ${md_gutter};
+  font-size: ${md_size};
+}
+
+body.markdown-page table {
+  font-size: ${md_table};
+}
+
+body.markdown-page .katex {
+  font-size: 1em;
+}
+
+/* Display math may be wider than the reading column. */
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25em 0;
+}
+
+.math.display {
+  display: block;
+  margin: 1rem 0;
+}
+
+/* Fenced code on markdown pages: a quiet panel, tokens from the code palette. */
+body.markdown-page pre {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  line-height: 1.5;
+  font-size: 0.9rem;
+}
+
+body.markdown-page pre code {
+  font-size: inherit;
+  background: transparent;
+  padding: 0;
+}
+
+body.markdown-page :not(pre) > code {
+  background: var(--hover);
+  border-radius: 3px;
+  padding: 0.1em 0.3em;
+}
+
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata { color: var(--code-comment); }
+.token.punctuation { color: var(--code-base); }
+.token.keyword,
+.token.atrule,
+.token.builtin { color: var(--code-keyword); font-weight: 600; }
+.token.operator,
+.token.important,
+.token.deleted { color: var(--code-operator); }
+.token.string,
+.token.char,
+.token.attr-value,
+.token.inserted { color: var(--code-string); }
+.token.function,
+.token.class-name { color: var(--code-function); }
+.token.number,
+.token.boolean,
+.token.constant,
+.token.property { color: var(--code-number); }
+.token.selector,
+.token.tag,
+.token.attr-name,
+.token.variable,
+.token.symbol { color: var(--code-tag); }
+
+/* --------------------------------------------------------------- markdown */
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1.25rem 0;
+  font-size: 1rem;
+}
+
+th, td {
+  padding: 0.5em 0.75em;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  background: var(--selected);
+  font-weight: 600;
+  border-bottom: 2px solid var(--border);
+}
+
+tbody tr:nth-child(even) {
+  background: var(--zebra);
+}
+
+tbody tr:hover {
+  background: var(--hover);
+}
+
+dl dt {
+  font-weight: 600;
+  margin-top: 0.75rem;
+}
+
+dl dd {
+  margin: 0 0 0.5rem 1.5rem;
+}
+
+.contains-task-list {
+  list-style: none;
+  padding-left: 1.25rem;
+}
+
+.task-list-item-checkbox {
+  margin-right: 0.45em;
+}
+
+/* Pandoc-compatible footnotes, as produced by the markdown-it footnote rule. */
+section.footnotes {
+  border-top: 1px solid var(--border);
+  font-size: 0.92rem;
+  margin-top: 2.5rem;
+}
+
+section.footnotes ol {
+  padding-left: 1.4rem;
+}
+
+.footnote-ref a {
+  text-decoration: none;
+}
+
+.footnote-backref {
+  text-decoration: none;
+}
+
+#TOC {
+  margin: 1.5rem 0 2rem;
+  padding: 0.75rem 1rem;
+  border-left: 3px solid var(--green);
+}
+
+#TOC ul {
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
+}
+
+#TOC a {
+  color: var(--green);
+  text-decoration: none;
+}
+
+.markdown-parent {
+  margin: 0 0 0.75rem;
+  line-height: 1;
+}
+
+.markdown-parent a {
+  display: inline-flex;
+  padding: 0.25rem;
+  color: var(--muted);
+  border-radius: 3px;
+}
+
+.markdown-parent a:hover {
+  color: var(--green);
+  background: var(--hover);
+}
+
+/* --------------------------------------------------------------- code page */
+
+/* Bare source view: no code block, panel, or scroll container. */
+body.code-page {
+  max-width: none;
+  min-height: 100vh;
+  margin: 0;
+  font: ${code_size}/1.55 '${mono}', ui-monospace, monospace;
+}
+
+.code-page pre[class*="language-"] {
+  margin: 0;
+  padding: 1rem 1rem 1rem 5.6em;
+  background: transparent;
+  color: var(--code-base);
+  font: inherit;
+  white-space: pre-wrap;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  tab-size: 4;
+}
+
+/* Override the general inline-code size for the actual source text. */
+.code-page pre[class*="language-"] > code {
+  background: transparent;
+  color: var(--code-base);
+  font: inherit;
+}
+
+.code-page .line-numbers .line-numbers-rows {
+  left: -5.6em;
+  width: 4.5em;
+  border-right-color: var(--border);
+}
+
+.code-page .line-highlight {
+  background: var(--code-highlight);
+}
+
+/* --------------------------------------------------------------- chemistry */
+
+.chem-figure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1.25rem;
+  margin: 1.25rem 0;
+}
+
+.chem-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.chem-cell svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.chem-label {
+  font-size: 0.9rem;
+  color: var(--muted);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.chem-error {
+  color: var(--red);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9rem;
+}
+
+/* A descriptor table is sized to its content, not stretched to the page. */
+.chem-props {
+  width: auto;
+  max-width: 100%;
+  margin: 1.25rem 0;
+}
+
+.chem-props caption {
+  caption-side: top;
+  text-align: left;
+  padding-bottom: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.chem-props th,
+.chem-props td {
+  padding: 0.3em 0.7em;
+  white-space: normal;
+}
+
+.chem-props thead th {
+  background: var(--selected);
+}
+
+.chem-props tbody th {
+  background: var(--zebra);
+  font-weight: 500;
+}
+
+/* ----------------------------------------------------------------- mermaid */
+
+pre.mermaid {
+  background: transparent;
+  border: 0;
+  overflow-x: auto;
+  text-align: center;
+}
+
+pre.mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* -------------------------------------------------------- directory listing */
+
+body.listing-page {
+  max-width: ${listing_width};
+  padding: 0 ${md_gutter};
+}
+
+body.listing-page h1 {
+  color: var(--accent-listing);
+  font-size: 1.6rem;
+  overflow-wrap: anywhere;
+}
+
+.directory-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: 0.15rem 1rem;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 2rem;
+  font-size: 1rem;
+}
+
+.directory-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+  padding: 0.3rem 0.5rem;
+  border-radius: 4px;
+}
+
+.directory-list li:hover {
+  background: var(--hover);
+}
+
+.directory-list .name {
+  overflow-wrap: anywhere;
+  text-decoration: none;
+  line-height: 1.35;
+}
+
+.directory-list .meta {
+  display: flex;
+  gap: 0.75rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.directory-list .size {
+  margin-left: auto;
+}
+
+.directory-list a.dir:link,
+.directory-list a.dir:visited {
+  color: var(--accent-directory);
+  font-weight: 600;
+}
+
+.directory-list a.file:link,
+.directory-list a.file:visited {
+  color: var(--text);
+}
+
+.directory-list a:hover {
+  color: var(--accent-listing);
+}
+
+/* The parent row and its toolbar span the whole grid. */
+.parent-row {
+  grid-column: 1 / -1;
+  flex-direction: row !important;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Hidden entries stay hidden until the toolbar switch is on. */
+body:not(.show-hidden) .hidden-entry {
+  display: none;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--muted);
+  user-select: none;
+}
+
+.switch input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.switch .slider {
+  position: relative;
+  width: 2rem;
+  height: 1.1rem;
+  border-radius: 999px;
+  background: var(--border);
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+.switch .slider::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  transition: transform 0.15s;
+}
+
+.switch input:checked + .slider {
+  background: var(--teal);
+}
+
+.switch input:checked + .slider::after {
+  transform: translateX(0.9rem);
+}
+
+.switch input:focus-visible + .slider {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
