@@ -22,7 +22,7 @@ import pystray
 from PIL import Image
 
 from . import appearance, autostart
-from .server import ServerState, Snapshot
+from .server import ServerRunner, Snapshot
 from .resources import TRAY_GLYPH_DARK, TRAY_GLYPH_LIGHT, data_path
 
 REFRESH_SECONDS = 2.0
@@ -119,10 +119,10 @@ def _error_line(snapshot: Snapshot) -> str:
 class Tray:
     """A pystray icon that reflects and controls one running server."""
 
-    def __init__(self, state: ServerState, url: str, server) -> None:
-        self.state = state
-        self.url = url
-        self.server = server
+    def __init__(self, runner: ServerRunner) -> None:
+        self.runner = runner
+        self.state = runner.state
+        self.url = runner.url
         self._stop_refresh = threading.Event()
         self._dark = appearance.is_dark()
         self.icon = pystray.Icon(
@@ -178,7 +178,9 @@ class Tray:
         _copy_to_clipboard(self.url)
 
     def _toggle_pause(self, _icon=None, _item=None) -> None:
-        self.state.toggle_paused()
+        # Pausing releases the port, so another program can take it while serv
+        # is idle; resuming binds it again.
+        self.runner.toggle()
         self._refresh()
 
     def _toggle_login(self, _icon=None, _item=None) -> None:
@@ -197,7 +199,7 @@ class Tray:
     def _quit(self, _icon=None, _item=None) -> None:
         self._stop_refresh.set()
         self.icon.stop()
-        threading.Thread(target=self.server.shutdown, daemon=True).start()
+        threading.Thread(target=self.runner.shutdown, daemon=True).start()
 
     # ------------------------------------------------------------ refresh
 
@@ -242,10 +244,10 @@ class Tray:
         self.icon.run()
 
 
-def run_tray(state: ServerState, url: str, server) -> bool:
+def run_tray(runner: ServerRunner) -> bool:
     """Show the tray, returning False when this session cannot display one."""
     try:
-        Tray(state, url, server).run()
+        Tray(runner).run()
     except Exception as error:  # noqa: BLE001 - headless sessions have no tray
         print(f"tray unavailable ({type(error).__name__}: {error}); serving without it", flush=True)
         return False

@@ -487,6 +487,7 @@ class SettingsWindow:
                     ("type.md_size", "Markdown"),
                     ("type.md_table", "Tables"),
                     ("type.code_size", "Code"),
+                    ("type.line_height", "Line spacing"),
                 ),
             ),
             (

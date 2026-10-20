@@ -45,6 +45,9 @@ Source checkout: `~/dev/serv/` (`src/serv/`, `data/`, `config/`, `tests/`,
   exits.
 - The tray menu: status, Open in Browser, Copy URL, Pause/Resume, Start at
   login, cache counters, last error, Settings…, Quit.
+- Pause releases the listening port so another program can use it; Resume takes
+  it back. If something else grabbed the port meanwhile, Resume leaves serv
+  paused and shows the reason in the menu.
 
 From a checkout or a terminal:
 

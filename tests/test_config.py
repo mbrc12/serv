@@ -63,3 +63,15 @@ def test_invalid_font_name_is_rejected(raw: dict) -> None:
 def test_missing_config_file_fails_loudly() -> None:
     with pytest.raises(ConfigError, match="config file not found"):
         load_config("/nonexistent/serv.toml")
+
+
+def test_missing_typography_key_falls_back_to_the_bundled_default(raw: dict) -> None:
+    del raw["type"]["line_height"]
+    config = parse_config(raw)
+    assert config.type.line_height == "1.65"
+
+
+def test_invalid_line_height_is_rejected(raw: dict) -> None:
+    raw["type"]["line_height"] = "loose"
+    with pytest.raises(ConfigError, match="line_height"):
+        parse_config(raw)

@@ -40,6 +40,7 @@ _COLOR = re.compile(
 )
 CSS_LENGTH = re.compile(r"^(?:\d+(?:\.\d+)?)(?:px|rem|em|ch|%)$")
 FONT_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9 \-]*$")
+NUMBER = re.compile(r"^\d+(?:\.\d+)?$")
 FONT_WEIGHTS = re.compile(r"^(?:[a-z]+(?:,[a-z]+)*@[0-9;,]+)?$")
 
 
@@ -119,6 +120,8 @@ class Typography:
     md_size: str = "1.2rem"
     md_table: str = "1.1rem"
     code_size: str = "12px"
+    #: Multiple of the font size, e.g. "1.65".
+    line_height: str = "1.65"
 
 
 @dataclass(frozen=True)
@@ -210,24 +213,33 @@ def bundled_section(section: str) -> dict:
     return table if isinstance(table, dict) else {}
 
 
+def _raw(section: dict, key: str, where: str):
+    """Return a configured value, falling back to the bundled default.
+
+    Keys added in later versions are simply absent from older config files;
+    taking the shipped default keeps those files working.
+    """
+    if key in section:
+        return section[key]
+    return bundled_section(where).get(key)
+
+
 def _color(section: dict, key: str, where: str) -> str:
-    value = section.get(key)
-    if value is None:
-        value = bundled_section(where).get(key)
+    value = _raw(section, key, where)
     if not isinstance(value, str) or not _COLOR.match(value):
         raise ConfigError(f"{where}.{key} is not a CSS color: {value!r}")
     return value
 
 
 def _length(section: dict, key: str, where: str) -> str:
-    value = section.get(key)
+    value = _raw(section, key, where)
     if not isinstance(value, str) or not CSS_LENGTH.match(value):
         raise ConfigError(f"{where}.{key} is not a CSS length: {value!r}")
     return value
 
 
 def _font(section: dict, key: str, where: str) -> str:
-    value = section.get(key)
+    value = _raw(section, key, where)
     if not isinstance(value, str) or not FONT_NAME.match(value):
         raise ConfigError(f"{where}.{key} is not a font family name: {value!r}")
     return value
@@ -242,6 +254,13 @@ def _glob_list(value: object, where: str) -> tuple[str, ...]:
             raise ConfigError(f"{where} contains an empty or non-string pattern: {pattern!r}")
         patterns.append(os.path.expanduser(pattern.strip()))
     return tuple(patterns)
+
+
+def _number(section: dict, key: str, where: str) -> str:
+    value = _raw(section, key, where)
+    if not isinstance(value, str) or not NUMBER.match(value.strip()):
+        raise ConfigError(f"{where}.{key} is not a number: {value!r}")
+    return value.strip()
 
 
 def _weights(section: dict, key: str, where: str) -> str | None:
@@ -313,6 +332,7 @@ def parse_config(data: dict, source: Path | None = None) -> Config:
             md_size=_length(typography, "md_size", "type"),
             md_table=_length(typography, "md_table", "type"),
             code_size=_length(typography, "code_size", "type"),
+            line_height=_number(typography, "line_height", "type"),
         ),
         layout=Layout(
             md_width=_length(layout, "md_width", "layout"),
@@ -413,6 +433,7 @@ def dump_config(config: Config) -> str:
         f"md_size   = {_quote(config.type.md_size)}",
         f"md_table  = {_quote(config.type.md_table)}",
         f"code_size = {_quote(config.type.code_size)}",
+        f"line_height = {_quote(config.type.line_height)}",
         "",
         "[layout]",
         f"md_width      = {_quote(config.layout.md_width)}",

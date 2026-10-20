@@ -21,6 +21,8 @@ SLIDERS: dict[str, tuple[float, float, float, str]] = {
     "layout.md_width": (32.0, 72.0, 2.0, "rem"),
     "layout.md_gutter": (1.0, 6.0, 0.5, "rem"),
     "layout.listing_width": (32.0, 72.0, 2.0, "rem"),
+    # Unitless: a line height is a multiple of the font size.
+    "type.line_height": (1.2, 2.0, 0.05, ""),
 }
 
 
@@ -51,11 +53,19 @@ def slider_for(key: str, text: str) -> tuple[float, float, float, str, float] | 
     silently converting and rewriting the user's value.
     """
     spec = SLIDERS.get(key)
-    parsed = parse_length(text)
-    if spec is None or parsed is None:
+    if spec is None:
         return None
     minimum, maximum, step, unit = spec
-    value, stored_unit = parsed
-    if unit != stored_unit:
-        return None
+    if unit == "":
+        try:
+            value = float(text.strip())
+        except ValueError:
+            return None
+    else:
+        parsed = parse_length(text)
+        if parsed is None:
+            return None
+        value, stored_unit = parsed
+        if unit != stored_unit:
+            return None
     return minimum, maximum, step, unit, min(max(value, minimum), maximum)

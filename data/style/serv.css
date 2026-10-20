@@ -16,7 +16,7 @@ body {
   color: var(--text);
   font-family: '${reading}', Georgia, 'Times New Roman', serif;
   font-size: 1rem;
-  line-height: 1.65;
+  line-height: ${line_height};
   margin-left: auto;
   margin-right: auto;
 }

@@ -16,6 +16,8 @@ import threading
 import time
 import urllib.parse
 
+import deal
+
 from .cache import RenderCache, file_digest
 from .config import Config
 from .constants import CSS_URL, JS_URL
@@ -320,24 +322,95 @@ def _handler_class(state: ServerState) -> type[Handler]:
     return type("BoundHandler", (Handler,), {"state": state})
 
 
+def make_server(state: ServerState) -> http.server.ThreadingHTTPServer:
+    """Bind a fresh HTTP server for a state object, without starting it."""
+    server = http.server.ThreadingHTTPServer(("", state.port), _handler_class(state))
+    server.daemon_threads = True
+    return server
+
+
 def build_server(config: Config, root: Path, port: int) -> tuple[http.server.ThreadingHTTPServer, ServerState]:
     """Create the HTTP server (bound, not yet serving) and its shared state."""
     state = ServerState.create(config, root, port)
-    server = http.server.ThreadingHTTPServer(("", port), _handler_class(state))
-    server.daemon_threads = True
-    return server, state
+    return make_server(state), state
 
 
-def serve_forever(config: Config, root: Path, port: int) -> None:
-    """Serve the current directory until interrupted."""
-    server, _ = build_server(config, root, port)
-    print(f"serving {root} at http://localhost:{port}/")
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("\nstopped")
-    finally:
-        server.server_close()
+class ServerRunner:
+    """Owns the listening socket and the thread that serves it.
+
+    Pausing closes the socket instead of answering 503, so another program can
+    take the port while serv is idle; resuming binds it again. The shared state
+    (renderer, cache, counters) survives a pause, so nothing is rebuilt.
+    """
+
+    def __init__(self, state: ServerState) -> None:
+        self.state = state
+        self.server: http.server.ThreadingHTTPServer | None = None
+        self.worker: threading.Thread | None = None
+
+    @property
+    def url(self) -> str:
+        """Return the address the server listens on."""
+        return f"http://localhost:{self.state.port}/"
+
+    @property
+    def paused(self) -> bool:
+        """Return whether the port is currently released."""
+        return self.state.snapshot().paused
+
+    @deal.raises(OSError)
+    def start(self) -> None:
+        """Bind the port and start serving on a worker thread."""
+        self.server = make_server(self.state)
+        self.state.set_paused(False)
+        self.worker = threading.Thread(
+            target=self.server.serve_forever, name="serv-http", daemon=True
+        )
+        self.worker.start()
+
+    def pause(self) -> None:
+        """Release the port so other programs can use it."""
+        self.state.set_paused(True)
+        if self.server is not None:
+            self.server.shutdown()
+            self.server.server_close()
+            self.server = None
+        if self.worker is not None:
+            self.worker.join(timeout=5)
+            self.worker = None
+
+    @deal.raises(OSError)
+    def resume(self) -> None:
+        """Take the port back and start serving again."""
+        if self.server is not None:
+            return
+        self.start()
+
+    def toggle(self) -> None:
+        """Pause a running server, or resume a paused one.
+
+        A failed resume (another program took the port) leaves the server
+        paused and records the reason for the tray menu.
+        """
+        if self.paused:
+            try:
+                self.resume()
+            except OSError as error:
+                self.state.set_paused(True)
+                self.state.note_error(f"cannot resume on port {self.state.port}: {error}")
+        else:
+            self.pause()
+
+    def shutdown(self) -> None:
+        """Stop serving and close the socket."""
+        self.state.set_paused(True)
+        if self.server is not None:
+            self.server.shutdown()
+            self.server.server_close()
+            self.server = None
+        if self.worker is not None:
+            self.worker.join(timeout=5)
+            self.worker = None
 
 
 def free_port(port: int) -> bool:
@@ -353,10 +426,11 @@ def free_port(port: int) -> bool:
 
 __all__ = [
     "Handler",
+    "ServerRunner",
     "ServerState",
     "Snapshot",
     "build_server",
     "free_port",
-    "serve_forever",
+    "make_server",
     "strip_line_reference",
 ]

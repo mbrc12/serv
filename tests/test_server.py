@@ -170,3 +170,56 @@ def test_paused_server_refuses_requests(site) -> None:
         assert "paused" in body
     finally:
         state.set_paused(False)
+
+
+def test_pause_releases_the_port_and_resume_takes_it_back(tmp_path) -> None:
+    from serv.server import ServerRunner, ServerState, free_port
+
+    state = ServerState.create(load_config(), tmp_path, 0)
+    # Port 0 would pick a new port on every bind; use an explicit free one.
+    probe_server, probe_state = build_server(load_config(), tmp_path, 0)
+    port = probe_server.server_address[1]
+    probe_server.server_close()
+
+    state = ServerState.create(load_config(), tmp_path, port)
+    runner = ServerRunner(state)
+    runner.start()
+    try:
+        assert not free_port(port)
+        runner.pause()
+        assert free_port(port), "pause must release the socket"
+        runner.resume()
+        assert not free_port(port)
+    finally:
+        runner.shutdown()
+    assert free_port(port)
+
+
+def test_resume_reports_a_port_taken_meanwhile(tmp_path) -> None:
+    import socket
+
+    from serv.server import ServerRunner, ServerState, free_port
+
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    probe.bind(("", 0))
+    port = probe.getsockname()[1]
+    probe.close()
+
+    runner = ServerRunner(ServerState.create(load_config(), tmp_path, port))
+    runner.start()
+    runner.pause()
+    assert free_port(port)
+
+    squatter = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    squatter.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    squatter.bind(("", port))
+    squatter.listen(1)
+    try:
+        runner.toggle()  # tries to resume, must fail gracefully
+        snapshot = runner.state.snapshot()
+        assert snapshot.paused is True
+        assert snapshot.last_error and "cannot resume" in snapshot.last_error
+    finally:
+        squatter.close()
+        runner.shutdown()

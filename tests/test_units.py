@@ -40,4 +40,5 @@ def test_all_slider_keys_have_sane_ranges() -> None:
     for key, (minimum, maximum, step, unit) in SLIDERS.items():
         assert minimum < maximum
         assert step > 0
-        assert unit in {"px", "rem", "em", "ch", "%"}, key
+        # An empty unit is a plain multiple, e.g. line height.
+        assert unit in {"px", "rem", "em", "ch", "%", ""}, key

@@ -14,11 +14,10 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
-import threading
 
 from .config import ConfigError, load_config
 from .locations import user_config_path
-from .server import build_server
+from .server import ServerRunner, ServerState
 from . import watch
 
 IPYTHON_VIEWER = Path("~/.local/share/ipython-html/serv.py")
@@ -145,8 +144,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"serv: not a directory: {root}", file=sys.stderr)
         return 2
 
+    state = ServerState.create(config, root, args.port)
+    runner = ServerRunner(state)
     try:
-        server, state = build_server(config, root, args.port)
+        runner.start()
     except OSError:
         # One process owns the tray and the server. If the port is taken, this
         # launch cannot become that process, so it says why and exits.
@@ -165,16 +166,14 @@ def main(argv: list[str] | None = None) -> int:
                 pass
         return 1
 
-    url = f"http://localhost:{args.port}/"
-    print(f"serving {root} at {url}", flush=True)
+    print(f"serving {root} at {runner.url}", flush=True)
 
     watcher = watch.start(state, args.config)
-    worker = threading.Thread(target=server.serve_forever, name="serv-http", daemon=True)
-    worker.start()
 
     try:
         if args.no_tray:
-            worker.join()
+            if runner.worker is not None:
+                runner.worker.join()
         else:
             from . import tray  # imported late: needs pystray and Pillow
 
@@ -182,15 +181,12 @@ def main(argv: list[str] | None = None) -> int:
             # wins so no window appears at login.
             if args.app and not args.no_gui:
                 _spawn_settings()
-            if tray.run_tray(state, url, server):
-                server.shutdown()
-            worker.join()
+            tray.run_tray(runner)
     except KeyboardInterrupt:
         print("\nstopped")
-        server.shutdown()
     finally:
         watcher.stop()
-        server.server_close()
+        runner.shutdown()
     return 0
 
 
