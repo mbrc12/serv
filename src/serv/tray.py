@@ -4,9 +4,8 @@ pystray gives one API over NSStatusBar on macOS, the Win32 notification area on
 Windows and AppIndicator/XEmbed on Linux. The icon image is the white-with-outline
 glyph, which stays legible on light and dark panels without asking the OS.
 
-The settings window is a separate process (``serv --settings``) because Qt and
-pystray each need the main thread; the server and this tray keep the main thread,
-and the window exits on close while the tray stays.
+The settings page is served by this process on a loopback-only ephemeral port;
+the tray opens it in the browser, and changes are saved as they are made.
 """
 
 from __future__ import annotations
@@ -99,16 +98,6 @@ def tray_image() -> Image.Image:
     return Image.open(path)
 
 
-def _settings_command() -> list[str]:
-    """Return the command that opens the settings window."""
-    return [*autostart.base_command(), "--settings"]
-
-
-def open_settings() -> None:
-    """Open the settings window in its own process."""
-    subprocess.Popen(_settings_command(), close_fds=True)
-
-
 def _error_line(snapshot: Snapshot) -> str:
     if not snapshot.last_error:
         return "No errors"
@@ -126,6 +115,7 @@ class Tray:
         self._stop_refresh = threading.Event()
         self._startup_error: Exception | None = None
         self._dark = appearance.is_dark()
+        self._settings_server = None
         self.icon = pystray.Icon(
             "serv",
             icon=tray_image(),
@@ -195,7 +185,16 @@ class Tray:
         self._refresh()
 
     def _open_settings(self, _icon=None, _item=None) -> None:
-        open_settings()
+        from . import web_settings
+
+        try:
+            if self._settings_server is None:
+                self._settings_server = web_settings.SettingsWebServer(self.state)
+            if not web_settings.open_settings(self._settings_server):
+                raise RuntimeError("the browser did not accept the settings URL")
+        except Exception as error:  # noqa: BLE001 - report but keep the tray alive
+            self.state.note_error(f"settings: {error}")
+            self._refresh()
 
     def _quit(self, _icon=None, _item=None) -> None:
         self._stop_refresh.set()
@@ -271,7 +270,12 @@ class Tray:
             else:
                 self._start_server(icon)
 
-        self.icon.run(setup=setup)
+        try:
+            self.icon.run(setup=setup)
+        finally:
+            self._stop_refresh.set()
+            if self._settings_server is not None:
+                self._settings_server.stop()
         if self._startup_error is not None:
             raise self._startup_error
 

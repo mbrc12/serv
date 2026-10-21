@@ -1,7 +1,7 @@
 """Prebuilt color schemes.
 
 The schemes live in ``config/schemes.toml`` as data; this module only reads,
-validates and applies them. Picking a scheme in the settings window copies its
+validates and applies them. Picking a scheme in the settings page copies its
 colors into the served palette fields, so ``~/.config/serv/serv.toml`` stays the
 single source of truth.
 

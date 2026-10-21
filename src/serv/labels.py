@@ -1,6 +1,6 @@
 """Human labels for colour keys.
 
-The labels are data in ``config/labels.toml`` so the settings window never shows
+The labels are data in ``config/labels.toml`` so the settings page never shows
 a raw identifier such as ``zebra``. Every key must have a label; a missing one
 is reported at startup instead of silently falling back to the key name.
 """

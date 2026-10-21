@@ -65,7 +65,7 @@ PYTHON_EXCLUDES = (
     "lib-dynload/_tkinter*",
 )
 
-#: Qt replaces Tcl/Tk for settings; keep only runtime libraries the app needs.
+#: Tk is not used by serv; keep only runtime libraries the app needs.
 PYTHON_LIBRARY_EXCLUDES = (
     "pkgconfig",
     "tcl9",
@@ -288,18 +288,25 @@ def sign() -> None:
 
 
 def smoke_test(version: str) -> None:
-    """Prove the bundled interpreter imports serv and the dependencies."""
+    """Prove the bundled interpreter can serve the browser settings page."""
     script = (
-        "import PySide6.QtCore, PySide6.QtGui, PySide6.QtWidgets;"
-        "import pystray, PIL, PIL.Image, markdown_it, mdit_py_plugins, deal;"
-        "import serv, serv.server, serv.ui, serv.tray, serv.autostart;"
+        "import json, pystray, PIL, PIL.Image, markdown_it, mdit_py_plugins, deal;"
+        "from pathlib import Path;"
+        "from urllib.request import Request, urlopen;"
+        "import serv, serv.server, serv.web_settings, serv.tray, serv.autostart;"
         "from serv.config import load_config;"
-        "from serv.ui import SettingsWindow;"
-        "window = SettingsWindow(load_config());"
-        "assert any(label.pixmap() is not None and not label.pixmap().isNull() "
-        "for label in window.root.findChildren(PySide6.QtWidgets.QLabel));"
-        "window.root.close();"
-        "print('imports and settings UI ok, Qt', PySide6.QtCore.qVersion())"
+        "from serv.server import ServerState;"
+        "from serv.web_settings import SettingsWebServer;"
+        "state = ServerState.create(load_config(), Path.cwd(), 1002);"
+        "settings = SettingsWebServer(state);"
+        "url = settings.start();"
+        "assert settings.port != state.port;"
+        "assert b'settings' in urlopen(url.split('#', 1)[0]).read().lower();"
+        "request = Request(f'http://127.0.0.1:{settings.port}/api/settings', "
+        "headers={'Authorization': f'Bearer {settings.token}'});"
+        "assert json.load(urlopen(request))['active_port'] == state.port;"
+        "settings.stop();"
+        "print('imports and browser settings ok')"
     )
     result = run(
         [str(PYTHON / "bin" / "python3"), "-c", script],
@@ -309,8 +316,6 @@ def smoke_test(version: str) -> None:
             "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
             "HOME": str(Path.home()),
             "PYTHONDONTWRITEBYTECODE": "1",
-            "QT_QPA_PLATFORM": "offscreen",
-            "QT_STYLE_OVERRIDE": "Fusion",
         },
     )
     log(result.stdout.strip())
@@ -331,63 +336,13 @@ def remove_path(path: Path) -> None:
 
 
 def trim_site_packages() -> None:
-    """Remove Qt build assets and modules that the settings UI does not use."""
+    """Drop test suites, command wrappers, and Python bytecode caches."""
     python_root = RESOURCES / "python"
     for pattern in ("PyObjCTest", "pyobjc_framework_cocoa-*/tests"):
         for path in python_root.rglob(pattern):
             remove_path(path)
     free = python_root / "lib" / "python3.14" / "site-packages" / "bin"
     remove_path(free)
-
-    site = python_root / "lib" / "python3.14" / "site-packages"
-    pyside = site / "PySide6"
-    qt = pyside / "Qt"
-    if not qt.is_dir():
-        raise SystemExit(f"PySide6 Qt runtime not found: {qt}")
-
-    keep_modules = {"QtCore.abi3.so", "QtDBus.abi3.so", "QtGui.abi3.so", "QtWidgets.abi3.so"}
-    for path in pyside.iterdir():
-        if path.is_file() and path.name.endswith(".pyi"):
-            remove_path(path)
-        elif path.is_file() and path.name.startswith("Qt") and path.suffix == ".so":
-            if path.name not in keep_modules:
-                remove_path(path)
-
-    for name in (
-        "Assistant.app",
-        "Designer.app",
-        "Linguist.app",
-        "doc",
-        "glue",
-        "include",
-        "lib",
-        "scripts",
-        "typesystems",
-    ):
-        remove_path(pyside / name)
-    remove_path(pyside / "libpyside6qml.abi3.6.11.dylib")
-
-    qt_lib = qt / "lib"
-    keep_frameworks = {"QtCore.framework", "QtDBus.framework", "QtGui.framework", "QtWidgets.framework"}
-    for path in qt_lib.iterdir():
-        if path.name not in keep_frameworks:
-            remove_path(path)
-
-    for name in ("libexec", "metatypes", "qml", "translations"):
-        remove_path(qt / name)
-
-    plugins = qt / "plugins"
-    for path in plugins.iterdir():
-        if path.name != "platforms":
-            remove_path(path)
-    platforms = plugins / "platforms"
-    keep_platforms = {"libqcocoa.dylib", "libqoffscreen.dylib"}
-    for path in platforms.iterdir():
-        if path.name not in keep_platforms:
-            remove_path(path)
-
-    for path in pyside.rglob("*.pyi"):
-        remove_path(path)
     for path in python_root.rglob("__pycache__"):
         remove_path(path)
 
@@ -402,9 +357,6 @@ def thin_python_binaries(version: str) -> None:
 
     candidates = set(PYTHON.rglob("*.so")) | set(PYTHON.rglob("*.dylib"))
     candidates.add(python_binary)
-    qt_lib = PYTHON / "lib" / f"python{version}" / "site-packages" / "PySide6" / "Qt" / "lib"
-    for framework in qt_lib.glob("*.framework"):
-        candidates.add(framework / "Versions" / "A" / framework.stem)
 
     thinned = 0
     for path in sorted(candidates):

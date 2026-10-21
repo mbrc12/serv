@@ -209,10 +209,12 @@ def _macos_install(working_directory: Path | None) -> Path:
     target = launch_agent_path()
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(plist_contents(working_directory))
-    if _macos_running():
-        _run("launchctl", "bootout", launch_agent_target())
-        _wait_for(lambda: not _macos_running())
+    already_loaded = _macos_running()
     _run("launchctl", "enable", launch_agent_target())
+    if already_loaded:
+        # Settings runs inside the active tray process. Booting out and
+        # bootstrapping its own LaunchAgent would kill that process mid-request.
+        return target
 
     error = ""
     for attempt in range(2):
@@ -230,8 +232,8 @@ def _macos_install(working_directory: Path | None) -> Path:
 
 
 def _macos_uninstall() -> None:
-    _run("launchctl", "bootout", launch_agent_target())
-    _wait_for(lambda: not _macos_running(), attempts=10)
+    # This can be called from a tray owned by this LaunchAgent. Disabling it
+    # prevents the next login from starting it without stopping the current app.
     _run("launchctl", "disable", launch_agent_target())
     launch_agent_path().unlink(missing_ok=True)
 
@@ -264,7 +266,8 @@ def _linux_install(working_directory: Path | None) -> Path:
 
 def _linux_uninstall() -> None:
     if systemd_unit_path().is_file():
-        _run("systemctl", "--user", "disable", "--now", SYSTEMD_UNIT)
+        # Keep the current server alive; only disable the next login start.
+        _run("systemctl", "--user", "disable", SYSTEMD_UNIT)
         systemd_unit_path().unlink(missing_ok=True)
         _run("systemctl", "--user", "daemon-reload")
     desktop_entry_path().unlink(missing_ok=True)
@@ -294,7 +297,7 @@ def _windows_install(working_directory: Path | None) -> Path:
     winreg = _windows_registry()
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, WINDOWS_RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
         winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, windows_run_value())
-    # The "path" is registry location, shown as-is in the settings window.
+    # The "path" is registry location, shown as-is on the settings page.
     return Path(f"HKCU\\{WINDOWS_RUN_KEY}\\{APP_NAME}")
 
 

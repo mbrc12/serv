@@ -1,6 +1,6 @@
 # Human labels for every colour key.
 #
-# The settings window shows these instead of the raw keys, so a swatch reads
+# The settings page shows these instead of the raw keys, so a color field reads
 # "Page background" rather than "bg". Keys are the names used in serv.toml; a
 # missing label is a startup error, which keeps the window from showing a raw
 # identifier again.

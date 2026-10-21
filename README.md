@@ -2,13 +2,12 @@
 
 A local file server: it renders Markdown in process, highlights source files,
 and serves everything under your home directory at `http://localhost:1002/`. It
-runs on macOS, Linux and Windows with a tray icon and a desktop settings window.
+runs on macOS, Linux and Windows with a tray icon and browser-based settings.
 
 - No `pandoc`; Markdown → HTML happens in Python (`markdown-it-py`).
-- Math, chemistry and Mermaid are optional plugins, loaded from a CDN on pages
-  that use them.
+- Math, chemistry, Mermaid, and Shoelace settings widgets load from pinned CDNs.
 - All colours live in a TOML config file, not in the source.
-- One Qt Fusion settings window and one pystray tray on every platform.
+- Settings open in the browser from the tray menu and save each change immediately.
 - The macOS build is an app bundle of readable `.py` files, so an agent can edit
   the running code directly.
 
@@ -20,7 +19,7 @@ runs on macOS, Linux and Windows with a tray icon and a desktop settings window.
   Contents/Resources/pysrc/serv/*.py      the server, as plain source
   Contents/Resources/data/                stylesheet template, icons, chemistry JS
   Contents/Resources/config/*.toml        default config, schemes, fonts, labels
-  Contents/Resources/python/              standalone CPython, Qt and dependencies
+  Contents/Resources/python/              standalone CPython and dependencies
 ~/.config/serv/serv.toml                  your settings (created on first save)
 ```
 
@@ -39,9 +38,9 @@ Source checkout: `~/dev/serv/` (`src/serv/`, `data/`, `config/`, `tests/`,
 - The login item runs the same app with `--no-gui`: tray and server, no window.
   It has no `KeepAlive`, so quitting stays quit until the next login.
 - Opening the macOS app starts the tray and server without opening a window.
-  Use **Settings…** in the tray menu to open settings in a separate process.
-- A second copy cannot share the port: it reports the conflict in a dialog and
-  exits.
+  Use **Settings…** in the tray menu to open the browser settings page on a
+  separate, OS-assigned loopback port.
+- A second copy cannot share the content port: it reports the conflict and exits.
 - The tray menu: status, Open in Browser, Copy URL, Pause/Resume, Start at
   login, cache counters, last error, Settings…, Quit.
 - Pause releases the listening port so another program can use it; Resume takes
@@ -52,7 +51,6 @@ From a checkout or a terminal:
 
 ```sh
 open -a "$HOME/Applications/serv.app"           # macOS: start the tray and server
-uv run serv --settings                           # open settings only
 uv run pytest
 launchctl kickstart -k gui/$(id -u)/local.serv   # macOS: restart the login item
 systemctl --user restart serv                    # Linux: restart the login item
@@ -73,9 +71,9 @@ files, so copy edits back into the checkout if you want to keep them.
 
 ## Configuration
 
-`serv.toml` is read at startup and watched while running: save a change (or let
-the settings window save it) and the server applies it within two seconds,
-without a restart.
+`serv.toml` is read at startup and watched while running. Browser settings are
+validated, saved, and applied immediately. External file edits are applied within
+two seconds.
 
 Resolution order: `--config PATH`, then `$SERV_CONFIG`, then the user file, then
 the bundled defaults. Values are validated at startup; a bad colour or size stops
@@ -91,14 +89,15 @@ the server with a clear message.
 | `type` | `reading`, `mono`, `reading_weights`, `mono_weights`, `md_size`, `md_table`, `code_size` |
 | `layout` | `md_width`, `md_gutter`, `listing_width` |
 
-The settings window is a thin shell over that file:
+The browser settings page edits that file directly:
 
-- **General** — port, the render size limit, cache size, verbatim globs, login item.
-- **Colors** — a Scheme menu listing every palette in family order (Tokyo Night,
-  Catppuccin, Gruvbox, Nord, Solarized, light then dark), then one swatch per
-  colour with a plain-language label (the raw key stays as a tooltip).
-- **Type & Layout** — font pickers (curated Google Fonts or any installed family)
-  and stepped sliders for the sizes.
+- **General** — port, render size limit, cache size, verbatim globs, and login item.
+- **Colors** — a scheme selector and a labeled color picker for every interface,
+  accent, and syntax color.
+- **Type & Layout** — curated web fonts or a locally installed family name, plus
+  sliders for text sizes and page widths.
+- Changes save as you edit; there is no Save button. The configured content port
+  takes effect after serv restarts.
 
 Every scheme value is a member of that theme's published palette — nothing is
 lightened or darkened. Where a role needed more contrast it borrows a different
@@ -148,23 +147,24 @@ uv run python tools/make_tray_icon.py       # re-render tray and app icons
 ```
 
 The macOS build embeds a uv-managed standalone CPython (`uv python install 3.14`)
-with PySide6 and the runtime dependencies installed into its `site-packages`, then
-copies the sources and data unmodified. The settings UI uses Qt's Fusion style and
-non-native dialogs for a consistent appearance. The bundle is ad-hoc signed. On
-Linux and Windows, run from a checkout (`uv run serv`) or package with your usual
-tool; the code path is identical apart from the login item and the tray backend.
+with the runtime dependencies installed into its `site-packages`, then copies the
+sources and data unmodified. The browser settings server binds to loopback on an
+OS-assigned ephemeral port, separate from the content server. The bundle is
+ad-hoc signed. On Linux and Windows, run from a checkout (`uv run serv`) or
+package with your usual tool; the code path is identical apart from the login
+item and tray backend.
 
 ## Decisions
 
-- **Qt Fusion for settings, pystray for the tray.** Fusion gives the built-in
-  controls and dialogs the same cross-platform style without custom widgets.
-- **The settings window is a separate process.** Qt and the tray both need the
-  main thread; splitting them also means the window can close while the server
-  keeps running, with changes arriving through the config watcher.
+- **Browser settings, pystray tray.** The tray starts a loopback-only settings
+  server on an ephemeral port and opens it in the browser. It does not use the
+  content server's port.
+- **Save on change.** Each setting is validated, written to TOML, and applied to
+  the running server as soon as the user changes it.
 - **macOS ships as an app bundle with plain sources**, not a single binary, so
   the running code stays readable and editable.
-- **No vendored web libraries.** Prism, KaTeX, fonts, RDKit.js and Mermaid come
-  from pinned CDN versions.
+- **No vendored web libraries.** Prism, KaTeX, fonts, RDKit.js, Mermaid, and
+  Shoelace come from pinned CDN versions.
 - **Black-and-white app icon, appearance-aware tray glyph.** A black glyph on
   light panels, a white one on dark ones, and a template image on macOS so the
   system handles inversion.

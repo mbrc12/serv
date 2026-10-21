@@ -2,7 +2,7 @@
 
 This is what makes external edits safe: a person or an agent can rewrite
 ``~/.config/serv/serv.toml`` and the running server picks it up within a couple
-of seconds, without a restart and without the settings window.
+of seconds, without a restart or an open settings page.
 """
 
 from __future__ import annotations
@@ -45,15 +45,18 @@ class ConfigWatcher(threading.Thread):
 
     def reload(self) -> None:
         """Load the config file and apply it, reporting failures in the tray."""
-        try:
-            config: Config = load_config(self.explicit)
-        except ConfigError as error:
-            self.state.note_error(f"config: {error}")
-            return
-        if config == self.state.config:
-            return
-        self.state.apply_config(config)
-        self.state.clear_error()
+        # Serialize read+apply with browser writes. Otherwise a watcher that
+        # read the old file just before an autosave could restore stale values.
+        with self.state.config_lock:
+            try:
+                config: Config = load_config(self.explicit)
+            except ConfigError as error:
+                self.state.note_error(f"config: {error}")
+                return
+            if config == self.state.config:
+                return
+            self.state.apply_config(config)
+            self.state.clear_error()
 
     def stop(self) -> None:
         self._stop.set()

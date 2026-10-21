@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+import threading
 
 import pytest
 
@@ -32,6 +33,36 @@ def test_watcher_applies_an_external_edit(tmp_path: Path, state: ServerState) ->
     assert state.config.layout.md_width == "52rem"
     # The stylesheet is regenerated, so the served CSS carries the new width.
     assert "max-width: 52rem" in state.stylesheet
+
+
+def test_watcher_holds_config_lock_while_loading(
+    state: ServerState, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    entered = threading.Event()
+    release = threading.Event()
+    lock_acquired_during_load = []
+
+    def load_while_paused(_explicit: str | None = None):
+        acquired = state.config_lock.acquire(blocking=False)
+        lock_acquired_during_load.append(acquired)
+        if acquired:
+            state.config_lock.release()
+        entered.set()
+        assert release.wait(2)
+        return state.config
+
+    monkeypatch.setattr(watch, "load_config", load_while_paused)
+    watcher = watch.ConfigWatcher(state)
+    thread = threading.Thread(target=watcher.reload)
+    thread.start()
+    try:
+        assert entered.wait(2)
+    finally:
+        release.set()
+        thread.join(2)
+
+    assert not thread.is_alive()
+    assert lock_acquired_during_load == [False]
 
 
 def test_watcher_reports_a_broken_file_and_keeps_serving(

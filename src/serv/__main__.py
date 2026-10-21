@@ -1,9 +1,8 @@
 """Command line entry point.
 
-``serv`` serves the current directory and shows a tray icon. The settings window
-is a separate process (``--settings``), because Qt and the tray both need the
-main thread of their own process; the running server applies saved changes
-through its config watcher.
+``serv`` serves the current directory and shows a tray icon. The tray starts a
+loopback-only settings server on an ephemeral port when the user opens Settings.
+Changes are saved as they are made and applied to the running server.
 """
 
 from __future__ import annotations
@@ -15,7 +14,6 @@ import shutil
 import sys
 
 from .config import ConfigError, load_config
-from .locations import user_config_path
 from .server import ServerRunner, ServerState
 from . import watch
 
@@ -32,7 +30,7 @@ def _parser(default_port: int) -> argparse.ArgumentParser:
         ),
         epilog=(
             f"default port: {default_port} for the static server, {IPYTHON_PORT} for "
-            "--ipython; `serv --settings` opens the settings window"
+            "--ipython; settings open from the tray menu"
         ),
     )
     parser.add_argument(
@@ -55,11 +53,6 @@ def _parser(default_port: int) -> argparse.ArgumentParser:
         dest="no_gui",
         action="store_true",
         help="start the tray without opening a window (used by the login item)",
-    )
-    parser.add_argument(
-        "--settings",
-        action="store_true",
-        help="open the settings window and exit",
     )
     parser.add_argument(
         "--ipython",
@@ -93,15 +86,6 @@ def _delegate_ipython(port: int) -> None:
     os.execv(interpreter, [interpreter, str(viewer), "--port", str(port)])
 
 
-def _open_settings_window(config) -> None:
-    """Run the settings window in this process, asking the first-run question."""
-    from . import ui  # imported late: needs PySide6
-
-    if not user_config_path().is_file():
-        ui.ask_start_at_login_if_needed(config)
-    ui.show_settings(config)
-
-
 def main(argv: list[str] | None = None) -> int:
     """Parse arguments, start the server, and keep it running."""
     preliminary = _parser(1002).parse_args(argv)
@@ -112,10 +96,6 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     args = _parser(config.server.port).parse_args(argv)
-
-    if args.settings:
-        _open_settings_window(config)
-        return 0
 
     if args.ipython is not None:
         _delegate_ipython(args.ipython)
@@ -138,9 +118,7 @@ def main(argv: list[str] | None = None) -> int:
         if not tray.run_tray(runner):
             detail = state.snapshot().last_error or "The tray could not be created."
             if not args.no_gui:
-                from . import ui
-
-                ui.show_error("serv could not start", detail)
+                print(f"serv: could not start: {detail}", file=sys.stderr)
             return 1
     except KeyboardInterrupt:
         print("\nstopped")

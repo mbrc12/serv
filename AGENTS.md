@@ -4,12 +4,12 @@
 
 - `src/serv/` — the server: `server.py` (routing), `markdown.py` (renderer),
   `page.py` (HTML shell, code pages, listings), `plugins/` (math, chemistry,
-  Mermaid), `config.py` + `theme.py` (settings → CSS), `ui.py` (Qt Fusion settings
-  window), `tray.py` (pystray), `autostart.py` (login item per OS), `watch.py`
-  (live config reload), plus pure helpers `colors.py`, `units.py`, `schemes.py`,
-  `fonts.py`, `labels.py`, `appearance.py`.
-- `data/` — stylesheet template, chemistry renderer JS, tray and app icons.
-  These are application data; third-party libraries are **not** vendored.
+  Mermaid), `config.py` + `theme.py` (settings → CSS), `web_settings.py` (local
+  settings API), `tray.py` (pystray), `autostart.py` (login item per OS),
+  `watch.py` (live config reload), plus pure helpers `colors.py`, `units.py`,
+  `schemes.py`, `fonts.py`, `labels.py`, `appearance.py`.
+- `data/` — stylesheet template, chemistry renderer JS, tray/app icons, and the
+  browser settings page. Third-party libraries are **not** vendored.
 - `config/serv.toml` — the built-in defaults, copied into the app bundle.
 - `tools/` — `build_app.py` (macOS bundle builder), `make_tray_icon.py`.
 - `tests/` — pytest, including an end-to-end HTTP test on an ephemeral port.
@@ -31,12 +31,14 @@
   `launchctl kickstart -k gui/$(id -u)/local.serv`.
 - Use `deal` contracts at data-flow boundaries (see `paths.py`, `config.py`,
   `cache.py`). When a validator takes `result`, name the parameter `result`.
-- The UI uses PySide6 with Qt Fusion and the tray uses pystray on every platform.
-  The settings window runs as its own process (`serv --settings`); keep it
-  separate from the server's tray event loop.
-- Keep the Qt Fusion style and dialogs non-native so settings look consistent
-  across platforms. Color swatches use configured colors; use
-  `colors.hex_for_picker` to composite translucency.
+- The tray's **Settings…** item starts the settings HTTP server in-process. Bind
+  only to `127.0.0.1` on port `0` so the OS assigns a free port separate from the
+  content server. Keep it alive until the tray exits.
+- Protect settings API writes with the per-server bearer token and same-origin
+  checks. Keep the token in the browser URL fragment, never in an HTTP request.
+- Save each setting as soon as the user changes it. Validate with `parse_config`
+  before atomically writing TOML, then apply the result to `ServerState`.
+- The browser UI uses pinned CDN components; do not vendor third-party libraries.
 
 ## Checks before handing work back
 

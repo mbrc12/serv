@@ -2,8 +2,8 @@
 #
 # Every entry is a Google Fonts family plus the axis query needed to load the
 # weights serv uses (body 400, bold 600, and italics for prose). The settings
-# window lists these; picking "System font…" instead uses a font installed on
-# the Mac and skips the Google Fonts request.
+# page lists these; entering another family name uses a locally installed font
+# and skips the Google Fonts request.
 #
 # To add a family, add an entry and check that its URL loads:
 #   https://fonts.googleapis.com/css2?family=<Name>:<weights>

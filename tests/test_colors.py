@@ -1,4 +1,4 @@
-"""CSS color parsing shared by the settings window and the tests."""
+"""CSS color parsing shared by the browser settings page and tests."""
 
 from __future__ import annotations
 

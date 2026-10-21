@@ -61,6 +61,7 @@ class ServerState:
     last_error: str | None = None
     last_error_time: float | None = None
     started_at: float = field(default_factory=time.time)
+    config_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     @classmethod
@@ -95,7 +96,7 @@ class ServerState:
             self.last_error_time = time.time()
 
     def apply_config(self, config: Config) -> None:
-        """Swap in a new configuration, e.g. after the settings window saved.
+        """Swap in a new configuration, e.g. after the browser settings saved.
 
         The renderer, stylesheet and no-process rules are rebuilt and the render
         cache is dropped, because cached pages carry the old colors. The

@@ -378,7 +378,7 @@ def load_config(explicit: str | None = None) -> Config:
 
 _HEADER = """\
 # serv configuration. Every color the server emits lives here; the Python
-# source only reads these keys. Saved by the settings window, safe to edit by
+# source only reads these keys. Saved by the browser settings page, safe to edit by
 # hand: a bad value is reported at startup instead of failing silently.
 """
 
