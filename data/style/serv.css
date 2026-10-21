@@ -376,6 +376,24 @@ section.footnotes ol {
   background: var(--hover);
 }
 
+.markdown-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
+  margin: 2.5rem 0 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.markdown-footer span + span::before {
+  content: "·";
+  margin-right: 0.9rem;
+  color: var(--border);
+}
+
 /* --------------------------------------------------------------- code page */
 
 /* Bare source view: no code block, panel, or scroll container. */

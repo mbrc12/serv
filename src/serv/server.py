@@ -270,17 +270,22 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def _serve_markdown(self, path: Path, url_path: str) -> None:
         try:
             digest = file_digest(path)
+            stat = path.stat()
         except OSError as error:
             self.state.note_error(f"read {path}: {error}")
             self.send_error(404, "Markdown file not found")
             return
 
         parent = url_path.rsplit("/", 1)[0] + "/" if "/" in url_path else "/"
-        key = (str(path), digest)
+        # Size and mtime are part of the key because the footer shows them; a
+        # touch must refresh the page even when the content is unchanged.
+        key = (str(path), digest, str(stat.st_mtime_ns), str(stat.st_size))
 
         def render() -> str:
             source = path.read_text(encoding="utf-8", errors="replace")
-            return self.state.renderer.render_document(source, path.name, parent)
+            return self.state.renderer.render_document(
+                source, path.name, parent, size=stat.st_size, modified=stat.st_mtime
+            )
 
         try:
             page = self.state.cache.render(key, render)

@@ -1,8 +1,9 @@
 """Bounded cache for rendered Markdown.
 
-The key is ``(file path, sha256 of its bytes)``, exactly like the old
-``functools.lru_cache``: a file edited on disk gets a new key and a fresh
-render, while repeated requests for an unchanged file are free.
+The key is ``(file path, sha256 of its bytes, mtime, size)``, exactly like the old
+``functools.lru_cache`` for content: a file edited on disk gets a new key and a
+fresh render, while repeated requests for an unchanged file are free. The mtime
+and size are included because the page footer displays them.
 
 Size: an entry is the rendered HTML of one document, typically 20–200 KB and
 occasionally larger for image-heavy pages. The default of 64 entries therefore
@@ -48,7 +49,7 @@ class RenderCache(Generic[T]):
             raise ValueError("capacity must be at least 1")
         self._initialized = False
         self._capacity = capacity
-        self._entries: OrderedDict[tuple[str, str], T] = OrderedDict()
+        self._entries: OrderedDict[tuple[str, ...], T] = OrderedDict()
         self._lock = threading.Lock()
         self._hits = 0
         self._misses = 0
@@ -59,7 +60,7 @@ class RenderCache(Generic[T]):
         """Return the content hash used as the second half of the key."""
         return sha256(source).hexdigest()
 
-    def get(self, key: tuple[str, str]) -> T | None:
+    def get(self, key: tuple[str, ...]) -> T | None:
         """Return a cached value and mark it most recently used."""
         with self._lock:
             if key in self._entries:
@@ -68,7 +69,7 @@ class RenderCache(Generic[T]):
                 return self._entries[key]
             return None
 
-    def put(self, key: tuple[str, str], value: T) -> T:
+    def put(self, key: tuple[str, ...], value: T) -> T:
         """Store a value, evicting the least recently used entry when full."""
         with self._lock:
             self._entries[key] = value
@@ -77,7 +78,7 @@ class RenderCache(Generic[T]):
                 self._entries.popitem(last=False)
         return value
 
-    def render(self, key: tuple[str, str], factory: Callable[[], T]) -> T:
+    def render(self, key: tuple[str, ...], factory: Callable[[], T]) -> T:
         """Return the cached value for key, or build and store it."""
         cached = self.get(key)
         if cached is not None:

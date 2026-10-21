@@ -19,7 +19,7 @@ from mdit_py_plugins.footnote import footnote_plugin
 from mdit_py_plugins.tasklists import tasklists_plugin
 
 from .config import Config
-from .page import document, parent_navigation, prism_scripts
+from .page import document, document_footer, parent_navigation, prism_scripts, word_count
 from .plugins import Registry, default_registry, parse_fence_info
 
 # Pandoc's auto-identifier rules: keep word characters, underscores, hyphens and
@@ -173,13 +173,26 @@ class MarkdownRenderer:
         headings = self._headings(tokens)
         return self.md.renderer.render(tokens, self.md.options, {}), headings
 
-    def render_document(self, source: str, title: str, parent_href: str) -> str:
-        """Render Markdown source to a complete page."""
+    def render_document(
+        self,
+        source: str,
+        title: str,
+        parent_href: str,
+        *,
+        size: int | None = None,
+        modified: float | None = None,
+    ) -> str:
+        """Render Markdown source to a complete page.
+
+        Passing the file size and modification time adds a metadata footer.
+        """
         tokens = self.md.parse(source)
         headings = self._headings(tokens)
         body = self.md.renderer.render(tokens, self.md.options, {})
         toc = build_toc(headings)
         content = parent_navigation(parent_href) + "\n" + place_toc(body, toc)
+        if size is not None and modified is not None:
+            content += "\n" + document_footer(size, modified, word_count(source))
         page_title = heading_title(headings) or title
         return document(
             page_title,

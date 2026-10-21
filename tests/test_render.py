@@ -153,3 +153,38 @@ def test_plugin_fences_are_not_handed_to_prism(renderer: MarkdownRenderer) -> No
     html = render(renderer, "```smiles\nCCO\n```\n\n```mermaid\ngraph TD; A-->B\n```\n")
     assert "RDKit" in html and "mermaid.esm.min.mjs" in html
     assert "prism.min.js" not in html
+
+
+def test_footer_shows_size_date_words_and_reading_time(renderer: MarkdownRenderer) -> None:
+    html = renderer.render_document(
+        "# Title\n\nOne two three four.\n",
+        "page.md",
+        "/docs/",
+        size=2048,
+        modified=0,  # 1 Jan 1970 in the local timezone on most machines
+    )
+    footer = html.split('class="markdown-footer"', 1)[1]
+    assert "2.0 KiB" in footer
+    assert "Modified 1 Jan 1970" in footer
+    assert "5 words" in footer
+    assert "1 min read" in footer
+
+
+def test_footer_is_absent_without_file_metadata(renderer: MarkdownRenderer) -> None:
+    assert "markdown-footer" not in render(renderer, "# Title\n")
+
+
+def test_footer_follows_the_document_body(renderer: MarkdownRenderer) -> None:
+    html = renderer.render_document(
+        "# Title\n\nBody.\n", "page.md", "/", size=10, modified=0
+    )
+    assert html.index("Body.") < html.index("markdown-footer")
+    assert html.rindex("markdown-footer") < html.index("</main>")
+
+
+def test_word_count_skips_punctuation_only_tokens() -> None:
+    from serv.page import word_count
+
+    assert word_count("one two  three\nfour") == 4
+    assert word_count("# Heading\n\n- item | cell") == 3
+    assert word_count("") == 0

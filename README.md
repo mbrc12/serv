@@ -61,3 +61,17 @@ uv run pytest
 uvx ruff check src tests tools
 node --check data/settings/settings.js
 ```
+
+## Letting AI tools link files
+
+If you use a coding agent, paste a line like this into its instructions (for
+example `AGENTS.md` or `CLAUDE.md`) so the files it writes come with clickable
+links:
+
+```text
+When you create an HTML or Markdown file, also give me a clickable link of the form
+http://localhost:1002/<path relative to $HOME>/<file>, plus the raw file path. Use http, not https.
+```
+
+This works while `serv` serves your home directory, which is the default when it
+starts in `$HOME`.

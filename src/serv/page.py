@@ -209,6 +209,30 @@ def format_file_size(size: int) -> str:
     return f"{size} B"
 
 
+def word_count(source: str) -> int:
+    """Return an approximate word count for reading time.
+
+    Punctuation-only tokens (heading marks, table pipes, list bullets) are not
+    words. Fenced code is included, which keeps the estimate cheap.
+    """
+    return sum(1 for token in source.split() if any(char.isalnum() for char in token))
+
+
+def document_footer(size: int, modified: float, words: int) -> str:
+    """Return the metadata footer shown below a rendered document."""
+    stamp = time.localtime(modified)
+    date = f"{stamp.tm_mday} {time.strftime('%b %Y, %H:%M', stamp)}"
+    minutes = max(1, round(words / 220))
+    items = [
+        format_file_size(size),
+        f"Modified {date}",
+        f"{words:,} {'word' if words == 1 else 'words'}",
+        f"{minutes} min read",
+    ]
+    spans = "".join(f"<span>{html.escape(item)}</span>" for item in items)
+    return f'<footer class="markdown-footer" aria-label="Document details">{spans}</footer>'
+
+
 def _listing_row(path: Path, name: str) -> str:
     """Return one listing row with its size and modification time."""
     full = path / name

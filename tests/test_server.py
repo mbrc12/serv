@@ -71,6 +71,23 @@ def test_markdown_page_renders_with_toc_and_parent_link(site) -> None:
     assert 'class="markdown-parent"' in body
     assert 'href="/"' in body  # parent folder of /notes.md
     assert "math inline" in body
+    assert 'class="markdown-footer"' in body
+    assert "bytes" not in body  # readable units, not raw bytes
+    assert "min read" in body
+
+
+def test_markdown_footer_tracks_file_changes(site) -> None:
+    base, _, root = site
+    (root / "footer.md").write_text("# Footer\n\nOne two three.\n")
+    first = fetch(f"{base}/footer.md")[1]
+    assert "4 words" in first
+    assert "bytes" not in first
+
+    # Touching the file without changing its bytes must refresh the footer.
+    (root / "footer.md").write_text("# Footer\n\nOne two three four five.\n")
+    second = fetch(f"{base}/footer.md")[1]
+    assert "6 words" in second
+    assert "4 words" not in second
 
 
 def test_markdown_is_cached_by_content_digest(site) -> None:
