@@ -9,7 +9,6 @@ const token = new URLSearchParams(location.hash.slice(1)).get('token');
 let state;
 let queue = Promise.resolve();
 let pending = 0;
-let lastMessage = 'All changes saved';
 let sequence = 0;
 
 const theme = matchMedia('(prefers-color-scheme: dark)');
@@ -115,16 +114,16 @@ function globalStatus() {
   const status = $('save-status');
   if (errors.length) {
     status.dataset.state = 'error';
-    status.textContent = `${errors.length} ${errors.length === 1 ? 'setting needs' : 'settings need'} attention. See the messages below.`;
+    status.textContent = 'Needs attention';
   } else if (pending || timers.size) {
     status.dataset.state = 'saving';
-    status.textContent = 'Saving changes…';
+    status.textContent = 'Saving…';
   } else if (dirty) {
     status.dataset.state = 'editing';
-    status.textContent = 'Changes not saved yet';
+    status.textContent = 'Unsaved';
   } else {
     status.dataset.state = 'saved';
-    status.textContent = lastMessage;
+    status.textContent = 'All changes saved';
   }
 }
 
@@ -144,9 +143,6 @@ function reconcile(data) {
     if (!binding.dirty) binding.write(binding.get());
   }
   for (const refresh of refreshers) refresh();
-  const port = state.config.server.port;
-  $('connection-note').textContent = `File server is running on port ${state.active_port}. Configured port: ${port}. Changing the configured port requires a restart. This settings UI uses a separate, temporary (ephemeral) port, ${location.port || (location.protocol === 'https:' ? '443' : '80')}; it does not change your file-server port.`;
-  $('config-path').textContent = state.config_path || 'Configuration path is not available.';
 }
 
 function schedule(binding) {
@@ -161,7 +157,7 @@ function schedule(binding) {
 function edited(binding, immediate = false) {
   binding.revision += 1;
   binding.dirty = true;
-  feedback(binding, 'Not saved yet');
+  feedback(binding);
   if (immediate) persist(binding);
   else schedule(binding);
 }
@@ -177,13 +173,13 @@ function persist(binding) {
   try {
     value = binding.read();
   } catch (error) {
-    feedback(binding, `${error.message} Your edit has not been saved.`, true);
+    feedback(binding, error.message, true);
     return;
   }
   const revision = binding.revision;
   binding.queuedRevision = revision;
   pending += 1;
-  feedback(binding, 'Saving…');
+  feedback(binding);
   queue = queue.then(async () => {
     // Coalesce edits that were superseded before their request began.
     if (revision !== binding.revision) return;
@@ -192,7 +188,7 @@ function persist(binding) {
       if (!binding.endpoint) checkSettings(response);
       if (revision === binding.revision) {
         binding.dirty = false;
-        feedback(binding, 'Saved');
+        feedback(binding);
       }
       if (binding.endpoint) {
         if (typeof response.autostart !== 'boolean') throw new Error('Invalid startup response. Edit again to retry.');
@@ -201,7 +197,6 @@ function persist(binding) {
       } else {
         reconcile(response);
       }
-      lastMessage = 'All changes saved';
     } catch (error) {
       if (revision === binding.revision) {
         binding.dirty = true;
@@ -257,7 +252,7 @@ function field(parent, label, key, { help, type = 'text', read, get, write, comm
     control.addEventListener('sl-input', () => {
       binding.revision += 1;
       binding.dirty = true;
-      feedback(binding, 'Not saved yet');
+      feedback(binding);
     });
     const commit = () => {
       let value;
@@ -265,7 +260,7 @@ function field(parent, label, key, { help, type = 'text', read, get, write, comm
         value = binding.read();
       } catch (error) {
         binding.dirty = true;
-        feedback(binding, `${error.message} Your edit has not been saved.`, true);
+        feedback(binding, error.message, true);
         return;
       }
       // An older root save may still be in flight, so queue this revision even
@@ -338,7 +333,7 @@ function serverFields() {
   });
   const size = field(parent, 'Largest rendered file (MB)', 'server.max_render_bytes', {
     type: 'number', min: 1024 / 1048576, max: 4096, step: 'any',
-    help: '1 MB = 1,048,576 bytes. Larger files are served as plain text. Up to 4096 MB.',
+    help: 'Larger files are served without rendering.',
     write: (control, value) => { control.value = String(value / 1048576); },
     read: () => {
       const text = size.control.value.trim();
@@ -352,7 +347,7 @@ function serverFields() {
   });
   const cache = field(parent, 'Cached pages', 'cache.entries', {
     type: 'number', min: 1, max: 4096, step: 1,
-    help: 'Rendered Markdown pages kept in memory (1–4096).',
+    help: 'Rendered Markdown pages kept in memory.',
     read: () => integer(cache.control, 1, 4096, 'Cached pages'),
   });
   switchField($('autostart-field'), 'Start serv at login', 'autostart', {
@@ -518,7 +513,7 @@ function fonts() {
     const customFields = node('div', undefined, 'custom-font');
     group.append(customFields);
     const name = field(customFields, `${title} font family`, `type.${kind}`, {
-      help: 'Choose above or enter a custom family. Letters, digits, spaces, and hyphens; start with a letter.',
+      help: 'Choose a family above or enter its name.',
       spellcheck: 'false',
       read: () => {
         const value = name.control.value.trim();
@@ -527,7 +522,7 @@ function fonts() {
       },
     });
     const weights = field(customFields, 'Google Fonts axis query (optional)', `type.${kind}_weights`, {
-      help: 'Leave empty for an installed font. Example: wght@400;600 or ital,wght@0,400;1,400.',
+      help: 'Optional. Leave empty to use the installed font.',
       spellcheck: 'false', autocapitalize: 'off',
       read: () => {
         const value = weights.control.value.trim();
@@ -639,11 +634,11 @@ async function reveal() {
   button.loading = true;
   button.disabled = true;
   status.dataset.state = '';
-  status.textContent = 'Opening configuration location…';
+  status.textContent = '';
   try {
     const response = await api('/api/reveal', {});
     if (response.ok !== true) throw new Error('Could not reveal the configuration file.');
-    status.textContent = 'Configuration file shown in your file manager.';
+    status.textContent = '';
   } catch (error) {
     status.textContent = error.message;
     status.dataset.state = 'error';
@@ -692,7 +687,6 @@ async function start() {
     reconcile(state);
     $('settings').hidden = false;
     scrollToSection();
-    lastMessage = 'Settings up to date';
     globalStatus();
   } catch (error) {
     $('load-error-text').textContent = error.message || 'Unable to load settings. Check your connection and reopen Settings.';

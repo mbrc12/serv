@@ -6,7 +6,7 @@ port = 1002
 # Absolute file paths matching any of these globs are served verbatim: no
 # Markdown rendering and no syntax highlighting. `**` crosses directories, and
 # a leading `~` means the home directory. Add one pattern per exception.
-no_process = ["~/dev/game/**/build/**"]
+no_process = []
 # Files larger than this many bytes are served as plain text instead of being
 # rendered or highlighted, so one huge file cannot stall the server.
 max_render_bytes = 1048576

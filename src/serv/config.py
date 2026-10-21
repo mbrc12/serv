@@ -54,7 +54,7 @@ class ServerSection:
     root: str | None = None
     # File paths matching any of these globs are served verbatim: no Markdown
     # rendering and no syntax highlighting. `**` crosses directory separators.
-    no_process: tuple[str, ...] = ("~/dev/game/**/build/**",)
+    no_process: tuple[str, ...] = ()
     # Files larger than this are served as plain text instead of being rendered
     # or highlighted, so one huge file cannot stall the server.
     max_render_bytes: int = 1_048_576

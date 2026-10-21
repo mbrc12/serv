@@ -101,7 +101,6 @@ def _payload(state: ServerState) -> dict:
         "autostart": autostart.is_installed(),
         "active_port": state.port,
         "restart_required": config.server.port != state.port,
-        "config_path": str(_save_path(config)),
     }
 
 

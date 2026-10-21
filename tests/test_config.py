@@ -21,7 +21,7 @@ def test_defaults_load_from_the_shipped_config() -> None:
     assert config.server.port == 1002
     assert config.palette.bg == "#e1e2e7"
     assert config.type.reading == "Crimson Pro"
-    assert config.server.no_process == (str(Path("~/dev/game/**/build/**").expanduser()),)
+    assert config.server.no_process == ()
 
 
 def test_invalid_color_is_rejected(raw: dict) -> None:
@@ -37,13 +37,13 @@ def test_rgba_and_transparent_are_accepted(raw: dict) -> None:
 
 
 def test_no_process_must_be_a_list_of_patterns(raw: dict) -> None:
-    raw["server"]["no_process"] = "~/dev/game/**/build/**"
+    raw["server"]["no_process"] = "build/**"
     with pytest.raises(ConfigError, match="no_process"):
         parse_config(raw)
 
 
 def test_no_process_expands_home(raw: dict) -> None:
-    raw["server"]["no_process"] = ["~/tmp/build/**"]
+    raw["server"]["no_process"] = ["~/example/build/**"]
     config = parse_config(raw)
     assert not config.server.no_process[0].startswith("~")
 

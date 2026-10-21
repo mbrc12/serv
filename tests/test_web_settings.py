@@ -101,13 +101,20 @@ def test_page_assets_and_api_require_token(server):
         assert "fonts.googleapis.com" in policy
         assert "fonts.gstatic.com" in policy
     assert "settings" in page.lower()
-    assert "changes are saved automatically" in page.lower()
+    assert 'id="save-status"' in page
+    assert "changes are saved automatically" not in page.lower()
+    assert "on disk" not in page.lower()
 
+    assets = {}
     for asset, content_type in (("settings.css", "text/css"), ("settings.js", "text/javascript")):
         with urlopen(base + asset) as response:
             assert response.status == 200
             assert content_type in response.headers["Content-Type"]
-            assert response.read()
+            assets[asset] = response.read().decode()
+    assert "All changes saved" in assets["settings.js"]
+    assert "Unsaved" in assets["settings.js"]
+    assert '.status[data-state="saved"]' in assets["settings.css"]
+    assert '.status[data-state="editing"]' in assets["settings.css"]
 
     with pytest.raises(HTTPError) as error:
         urlopen(api_url(settings))
@@ -116,6 +123,7 @@ def test_page_assets_and_api_require_token(server):
     payload = get_json(settings, token=settings.token)
     assert payload["active_port"] == state.port
     assert payload["root"] == str(state.root)
+    assert "config_path" not in payload
     assert payload["config"]["server"]["port"] == state.config.server.port
     assert payload["fonts"]["reading"]
     assert payload["schemes"]
