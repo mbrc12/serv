@@ -172,6 +172,31 @@ def test_paused_server_refuses_requests(site) -> None:
         state.set_paused(False)
 
 
+def test_restart_root_rebinds_the_server_to_the_new_directory(tmp_path) -> None:
+    from serv.server import ServerRunner, ServerState
+
+    old_root = tmp_path / "old"
+    new_root = tmp_path / "new"
+    old_root.mkdir()
+    new_root.mkdir()
+    (old_root / "old.txt").write_text("old root")
+    (new_root / "new.txt").write_text("new root")
+    probe, _ = build_server(load_config(), old_root, 0)
+    port = probe.server_address[1]
+    probe.server_close()
+
+    runner = ServerRunner(ServerState.create(load_config(), old_root, port))
+    runner.start()
+    try:
+        assert "old root" in fetch(f"http://127.0.0.1:{port}/old.txt")[1]
+        runner.restart_root(new_root)
+        assert runner.state.root == new_root
+        assert "new root" in fetch(f"http://127.0.0.1:{port}/new.txt")[1]
+        assert fetch(f"http://127.0.0.1:{port}/old.txt")[0] == 404
+    finally:
+        runner.shutdown()
+
+
 def test_pause_releases_the_port_and_resume_takes_it_back(tmp_path) -> None:
     from serv.server import ServerRunner, ServerState, free_port
 

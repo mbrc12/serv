@@ -13,7 +13,7 @@ from pathlib import Path
 import shutil
 import sys
 
-from .config import ConfigError, load_config
+from .config import Config, ConfigError, load_config
 from .server import ServerRunner, ServerState
 from . import watch
 
@@ -25,7 +25,7 @@ def _parser(default_port: int) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="serv",
         description=(
-            "Serve the current directory: Markdown is rendered in process, source files "
+            "Serve the configured directory (or the current directory): Markdown is rendered in process, source files "
             "are highlighted, and the page styling comes from ~/.config/serv/serv.toml."
         ),
         epilog=(
@@ -39,8 +39,8 @@ def _parser(default_port: int) -> argparse.ArgumentParser:
     parser.add_argument(
         "--root",
         type=Path,
-        default=Path.cwd(),
-        help="directory to serve (default: the current directory)",
+        default=None,
+        help="directory to serve (overrides the configured root)",
     )
     parser.add_argument(
         "--config",
@@ -63,6 +63,17 @@ def _parser(default_port: int) -> argparse.ArgumentParser:
         help=f"serve the ipython .save() HTML viewer instead (default port: {IPYTHON_PORT})",
     )
     return parser
+
+
+def _root_for_config(
+    config: Config, cli_root: Path | None, default_root: Path
+) -> Path:
+    """Resolve the active root while keeping an explicit CLI override."""
+    if cli_root is not None:
+        return cli_root
+    if config.server.root is not None:
+        return Path(config.server.root)
+    return default_root
 
 
 def _python_interpreter() -> str:
@@ -101,14 +112,25 @@ def main(argv: list[str] | None = None) -> int:
         _delegate_ipython(args.ipython)
         return 0
 
-    root = args.root.expanduser().resolve()
+    default_root = Path.cwd().resolve()
+    cli_root = args.root.expanduser().resolve() if args.root is not None else None
+    root = _root_for_config(config, cli_root, default_root)
     if not root.is_dir():
         print(f"serv: not a directory: {root}", file=sys.stderr)
         return 2
 
     state = ServerState.create(config, root, args.port)
     runner = ServerRunner(state)
-    watcher = watch.start(state, args.config)
+
+    def root_for_config(next_config: Config) -> Path:
+        return _root_for_config(next_config, cli_root, default_root)
+
+    watcher = watch.start(
+        state,
+        args.config,
+        root_for_config=root_for_config,
+        restart_root=runner.restart_root,
+    )
 
     try:
         from . import tray  # imported late: needs pystray and Pillow

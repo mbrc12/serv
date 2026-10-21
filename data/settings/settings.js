@@ -100,8 +100,9 @@ async function api(path, body) {
 }
 
 function checkSettings(data) {
-  if (!data.config || !data.config.server || !data.config.type || !data.config.layout ||
-      !data.config.cache || !Array.isArray(data.schemes) || !data.labels || !data.fonts ||
+  if (!data.config || !data.config.server || typeof data.root !== 'string' ||
+      !data.config.type || !data.config.layout || !data.config.cache ||
+      !Array.isArray(data.schemes) || !data.labels || !data.fonts ||
       !Array.isArray(data.fonts.reading) || !Array.isArray(data.fonts.mono)) {
     throw new Error('The server returned incomplete settings. Reopen Settings or try again.');
   }
@@ -235,7 +236,7 @@ function bind({ key, control, status, read, write, get, endpoint, body }) {
   return binding;
 }
 
-function field(parent, label, key, { help, type = 'text', read, get, write, ...attributes } = {}) {
+function field(parent, label, key, { help, type = 'text', read, get, write, commitOnly = false, ...attributes } = {}) {
   const wrapper = node('div', undefined, 'field');
   const control = node('sl-input');
   control.label = label;
@@ -252,15 +253,46 @@ function field(parent, label, key, { help, type = 'text', read, get, write, ...a
     read: read || (() => control.value.trim()),
     write: write ? value => write(control, value) : value => { control.value = String(value ?? ''); },
   });
-  control.addEventListener('sl-input', () => edited(binding));
-  control.addEventListener('sl-change', () => persist(binding));
-  control.addEventListener('sl-blur', () => persist(binding));
-  control.addEventListener('keydown', event => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      persist(binding);
-    }
-  });
+  if (commitOnly) {
+    control.addEventListener('sl-input', () => {
+      binding.revision += 1;
+      binding.dirty = true;
+      feedback(binding, 'Not saved yet');
+    });
+    const commit = () => {
+      let value;
+      try {
+        value = binding.read();
+      } catch (error) {
+        binding.dirty = true;
+        feedback(binding, `${error.message} Your edit has not been saved.`, true);
+        return;
+      }
+      // An older root save may still be in flight, so queue this revision even
+      // when it matches the last acknowledged value.
+      if (String(value).trim() === String(binding.get() ?? '').trim() && !binding.dirty) return;
+      if (binding.dirty) persist(binding);
+      else edited(binding, true);
+    };
+    control.addEventListener('sl-change', commit);
+    control.addEventListener('sl-blur', commit);
+    control.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        commit();
+      }
+    });
+  } else {
+    control.addEventListener('sl-input', () => edited(binding));
+    control.addEventListener('sl-change', () => persist(binding));
+    control.addEventListener('sl-blur', () => persist(binding));
+    control.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        persist(binding);
+      }
+    });
+  }
   return { control, binding, wrapper, status };
 }
 
@@ -288,6 +320,17 @@ function switchField(parent, label, key, options = {}) {
 
 function serverFields() {
   const parent = $('server-fields');
+  const rootField = field(parent, 'Folder to serve', 'server.root', {
+    help: 'Enter an absolute path to an existing folder. Changing it restarts the file server.',
+    get: () => state.root,
+    commitOnly: true,
+    read: () => {
+      const value = rootField.control.value.trim();
+      if (!value) throw new Error('Enter an absolute folder path.');
+      return value;
+    },
+  });
+  rootField.wrapper.classList.add('root-field');
   const port = field(parent, 'File-server port', 'server.port', {
     type: 'number', min: 1, max: 65535, step: 1,
     help: '1–65535. Restart serv to use a changed port.',

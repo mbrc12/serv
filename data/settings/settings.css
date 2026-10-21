@@ -1,12 +1,12 @@
 :root {
   color-scheme: light dark;
-  --page: #fafaf8;
+  --page: #fff;
   --surface: #fff;
-  --ink: #202624;
-  --muted: #55605a;
-  --line: #d8ded9;
-  --accent: #27634c;
-  --soft: #edf3ee;
+  --ink: #1a1a1a;
+  --muted: #5f5f5f;
+  --line: #d6d6d6;
+  --accent: #4a4a4a;
+  --soft: #f2f2f2;
   --error: #ad2525;
   --sl-font-sans: 'Hanken Grotesk', sans-serif;
   --sl-input-font-family: var(--sl-font-sans);
@@ -16,24 +16,42 @@
   --sl-input-label-font-size-medium: .8125rem;
   --sl-input-help-text-font-size-medium: .75rem;
   --sl-button-font-size-medium: .8125rem;
-  --sl-color-primary-600: #27634c;
-  --sl-color-primary-700: #1e503d;
-  --sl-focus-ring-color: #27634c;
+  --sl-color-primary-50: #fafafa;
+  --sl-color-primary-100: #f5f5f5;
+  --sl-color-primary-200: #e5e5e5;
+  --sl-color-primary-300: #d4d4d4;
+  --sl-color-primary-400: #a3a3a3;
+  --sl-color-primary-500: #737373;
+  --sl-color-primary-600: #4a4a4a;
+  --sl-color-primary-700: #333;
+  --sl-color-primary-800: #262626;
+  --sl-color-primary-900: #1a1a1a;
+  --sl-color-primary-950: #0a0a0a;
+  --sl-focus-ring-color: #4a4a4a;
   --sl-input-border-radius-medium: 5px;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --page: #171b19;
-    --surface: #202622;
-    --ink: #edf2ee;
-    --muted: #b0bdb4;
-    --line: #445047;
-    --accent: #a0d9b9;
-    --soft: #25392e;
+    --page: #171717;
+    --surface: #222;
+    --ink: #f2f2f2;
+    --muted: #b5b5b5;
+    --line: #444;
+    --accent: #d0d0d0;
+    --soft: #2a2a2a;
     --error: #ffb4ab;
-    --sl-color-primary-600: #27634c;
-    --sl-color-primary-700: #1e503d;
-    --sl-focus-ring-color: #a0d9b9;
+    --sl-color-primary-50: #f5f5f5;
+    --sl-color-primary-100: #e5e5e5;
+    --sl-color-primary-200: #d4d4d4;
+    --sl-color-primary-300: #c0c0c0;
+    --sl-color-primary-400: #a0a0a0;
+    --sl-color-primary-500: #808080;
+    --sl-color-primary-600: #666;
+    --sl-color-primary-700: #555;
+    --sl-color-primary-800: #444;
+    --sl-color-primary-900: #333;
+    --sl-color-primary-950: #222;
+    --sl-focus-ring-color: #d0d0d0;
   }
 }
 * { box-sizing: border-box; }
@@ -71,6 +89,7 @@ section:focus-visible { outline-offset: 1px; }
 #load-error button { color: var(--ink); background: var(--surface); border: 1px solid var(--line); padding: 5px 10px; border-radius: 4px; }
 .field-grid, .range-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; }
 .field { min-width: 0; }
+.root-field { grid-column: 1 / -1; }
 .field-status { font-size: 11px; min-height: 1.2em; margin: 2px 0 0; overflow-wrap: anywhere; color: var(--muted); }
 .help { font-size: 12px; margin-bottom: 6px; }
 .switch-row { margin: 7px 0 3px; }

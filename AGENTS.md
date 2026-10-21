@@ -38,6 +38,9 @@
   checks. Keep the token in the browser URL fragment, never in an HTTP request.
 - Save each setting as soon as the user changes it. Validate with `parse_config`
   before atomically writing TOML, then apply the result to `ServerState`.
+- The serving root is stored as an absolute `server.root` path. A root change
+  restarts the file-server listener on its existing port; the tray and settings
+  server stay running. Serialize config writes with watcher reloads.
 - The browser UI uses pinned CDN components; do not vendor third-party libraries.
 
 ## Checks before handing work back

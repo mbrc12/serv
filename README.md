@@ -1,8 +1,8 @@
 # serv
 
 A local file server: it renders Markdown in process, highlights source files,
-and serves everything under your home directory at `http://localhost:1002/`. It
-runs on macOS, Linux and Windows with a tray icon and browser-based settings.
+and serves a configurable root folder at `http://localhost:1002/`. It runs on
+macOS, Linux and Windows with a tray icon and browser-based settings.
 
 - No `pandoc`; Markdown → HTML happens in Python (`markdown-it-py`).
 - Math, chemistry, Mermaid, and Shoelace settings widgets load from pinned CDNs.
@@ -76,12 +76,13 @@ validated, saved, and applied immediately. External file edits are applied withi
 two seconds.
 
 Resolution order: `--config PATH`, then `$SERV_CONFIG`, then the user file, then
-the bundled defaults. Values are validated at startup; a bad colour or size stops
-the server with a clear message.
+the bundled defaults. Values are validated at startup; an invalid root, colour or
+size stops the server with a clear message. `--root PATH` overrides the saved
+root for that launch; otherwise an omitted root uses the starting directory.
 
 | Section | Keys |
 | --- | --- |
-| `server` | `port`, `no_process` (glob list), `max_render_bytes` |
+| `server` | `root` (absolute directory), `port`, `no_process` (glob list), `max_render_bytes` |
 | `cache` | `entries` (rendered pages kept in memory) |
 | `palette` | `bg`, `text`, `muted`, `border`, `hover`, `selected`, `selected_text`, `zebra`, `red`, `orange`, `green`, `blue`, `teal`, `purple` |
 | `accents` | `markdown`, `listing`, `directory` |
@@ -91,13 +92,14 @@ the server with a clear message.
 
 The browser settings page edits that file directly:
 
-- **General** — port, render size limit, cache size, verbatim globs, and login item.
+- **General** — root folder, port, render size limit, cache size, verbatim globs, and login item.
 - **Colors** — a scheme selector and a labeled color picker for every interface,
   accent, and syntax color.
 - **Type & Layout** — curated web fonts or a locally installed family name, plus
   sliders for text sizes and page widths.
-- Changes save as you edit; there is no Save button. The configured content port
-  takes effect after serv restarts.
+- Changes save as you edit; there is no Save button. Changing the root folder
+  restarts the file server on the same port. The configured content port takes
+  effect after serv restarts.
 
 Every scheme value is a member of that theme's published palette — nothing is
 lightened or darkened. Where a role needed more contrast it borrows a different

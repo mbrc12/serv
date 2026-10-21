@@ -48,6 +48,38 @@ def test_no_process_expands_home(raw: dict) -> None:
     assert not config.server.no_process[0].startswith("~")
 
 
+def test_server_root_is_normalized_and_saved(raw: dict, tmp_path: Path) -> None:
+    raw["server"]["root"] = str(tmp_path)
+    config = parse_config(raw)
+    assert config.server.root == str(tmp_path.resolve())
+
+
+def test_server_root_must_be_an_existing_absolute_directory(raw: dict, tmp_path: Path) -> None:
+    raw["server"]["root"] = "relative/path"
+    with pytest.raises(ConfigError, match="absolute path"):
+        parse_config(raw)
+
+    raw["server"]["root"] = str(tmp_path / "missing")
+    with pytest.raises(ConfigError, match="not a directory"):
+        parse_config(raw)
+
+
+def test_malformed_server_roots_are_reported_as_config_errors(
+    raw: dict, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw["server"]["root"] = str(tmp_path) + "\0invalid"
+    with pytest.raises(ConfigError, match="usable path"):
+        parse_config(raw)
+
+    def fail_expanduser(_path: Path) -> Path:
+        raise RuntimeError("unknown user")
+
+    monkeypatch.setattr(Path, "expanduser", fail_expanduser)
+    raw["server"]["root"] = "~missing-user/root"
+    with pytest.raises(ConfigError, match="usable path"):
+        parse_config(raw)
+
+
 def test_invalid_length_is_rejected(raw: dict) -> None:
     raw["layout"]["md_width"] = "46"
     with pytest.raises(ConfigError, match="layout.md_width"):

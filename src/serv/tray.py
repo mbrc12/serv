@@ -189,7 +189,9 @@ class Tray:
 
         try:
             if self._settings_server is None:
-                self._settings_server = web_settings.SettingsWebServer(self.state)
+                self._settings_server = web_settings.SettingsWebServer(
+                    self.state, restart_root=self.runner.restart_root
+                )
             if not web_settings.open_settings(self._settings_server):
                 raise RuntimeError("the browser did not accept the settings URL")
         except Exception as error:  # noqa: BLE001 - report but keep the tray alive

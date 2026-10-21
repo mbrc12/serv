@@ -19,7 +19,9 @@ def server(tmp_path, monkeypatch):
     state = ServerState.create(load_config(), tmp_path, 1002)
     config_path = tmp_path / "serv.toml"
     monkeypatch.setattr(web_settings, "_save_path", lambda _config: config_path)
-    settings = web_settings.SettingsWebServer(state)
+    settings = web_settings.SettingsWebServer(
+        state, restart_root=lambda root: setattr(state, "root", root)
+    )
     settings.start()
     try:
         yield settings, state, config_path
@@ -113,6 +115,7 @@ def test_page_assets_and_api_require_token(server):
 
     payload = get_json(settings, token=settings.token)
     assert payload["active_port"] == state.port
+    assert payload["root"] == str(state.root)
     assert payload["config"]["server"]["port"] == state.config.server.port
     assert payload["fonts"]["reading"]
     assert payload["schemes"]
@@ -156,6 +159,60 @@ def test_server_port_change_is_persisted_but_requires_restart(server):
     assert state.port != new_port
     assert payload["restart_required"] is True
     assert config_path.is_file()
+
+
+def test_root_change_is_saved_and_restarts_the_file_server(server, tmp_path, monkeypatch):
+    settings, state, config_path = server
+    new_root = tmp_path / "served"
+    new_root.mkdir()
+    restarted = []
+
+    def restart_root(root):
+        restarted.append(root)
+        state.root = root
+
+    monkeypatch.setattr(settings, "_restart_root", restart_root)
+    payload = post_json(settings, "server.root", str(new_root))
+
+    assert state.root == new_root
+    assert state.config.server.root == str(new_root)
+    assert payload["root"] == str(new_root)
+    assert restarted == [new_root]
+    assert f'root = "{new_root}"' in config_path.read_text()
+
+
+def test_invalid_root_does_not_persist_or_restart(server, tmp_path, monkeypatch):
+    settings, state, config_path = server
+    old_root = state.root
+    restarted = []
+    monkeypatch.setattr(settings, "_restart_root", restarted.append)
+
+    with pytest.raises(HTTPError) as error:
+        post_json(settings, "server.root", str(tmp_path / "missing"))
+
+    assert error.value.code == 400
+    assert state.root == old_root
+    assert restarted == []
+    assert not config_path.exists()
+
+
+def test_failed_root_restart_restores_the_previous_config(server, tmp_path, monkeypatch):
+    settings, state, config_path = server
+    old_root = state.root
+    new_root = tmp_path / "served"
+    new_root.mkdir()
+
+    def fail_restart(_root):
+        raise OSError("port could not be rebound")
+
+    monkeypatch.setattr(settings, "_restart_root", fail_restart)
+    with pytest.raises(HTTPError) as error:
+        post_json(settings, "server.root", str(new_root))
+
+    assert error.value.code == 400
+    assert state.root == old_root
+    assert state.config.server.root is None
+    assert 'root = ' not in config_path.read_text()
 
 
 def test_pattern_list_is_persisted_as_a_list(server):

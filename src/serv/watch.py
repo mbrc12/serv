@@ -7,6 +7,8 @@ of seconds, without a restart or an open settings page.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from pathlib import Path
 import threading
 
 from .config import Config, ConfigError, load_config, resolve_config_path
@@ -18,10 +20,19 @@ INTERVAL_SECONDS = 2.0
 class ConfigWatcher(threading.Thread):
     """A daemon thread that reloads the config file when it changes."""
 
-    def __init__(self, state: ServerState, explicit: str | None = None) -> None:
+    def __init__(
+        self,
+        state: ServerState,
+        explicit: str | None = None,
+        *,
+        root_for_config: Callable[[Config], Path] | None = None,
+        restart_root: Callable[[Path], None] | None = None,
+    ) -> None:
         super().__init__(name="serv-config-watch", daemon=True)
         self.state = state
         self.explicit = explicit
+        self.root_for_config = root_for_config
+        self.restart_root = restart_root
         self._stamp: tuple[str, int, int] | None = self._current_stamp()
         self._stop = threading.Event()
 
@@ -55,6 +66,20 @@ class ConfigWatcher(threading.Thread):
                 return
             if config == self.state.config:
                 return
+            if (
+                self.root_for_config is not None
+                and config.server.root != self.state.config.server.root
+            ):
+                root = self.root_for_config(config)
+                if root != self.state.root:
+                    try:
+                        if self.restart_root is None:
+                            self.state.root = root
+                        else:
+                            self.restart_root(root)
+                    except (OSError, ValueError) as error:
+                        self.state.note_error(f"config root: {error}")
+                        return
             self.state.apply_config(config)
             self.state.clear_error()
 
@@ -62,8 +87,19 @@ class ConfigWatcher(threading.Thread):
         self._stop.set()
 
 
-def start(state: ServerState, explicit: str | None = None) -> ConfigWatcher:
+def start(
+    state: ServerState,
+    explicit: str | None = None,
+    *,
+    root_for_config: Callable[[Config], Path] | None = None,
+    restart_root: Callable[[Path], None] | None = None,
+) -> ConfigWatcher:
     """Start watching; the caller keeps the thread object to stop it later."""
-    watcher = ConfigWatcher(state, explicit)
+    watcher = ConfigWatcher(
+        state,
+        explicit,
+        root_for_config=root_for_config,
+        restart_root=restart_root,
+    )
     watcher.start()
     return watcher

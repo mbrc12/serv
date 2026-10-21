@@ -348,6 +348,7 @@ class ServerRunner:
         self.state = state
         self.server: http.server.ThreadingHTTPServer | None = None
         self.worker: threading.Thread | None = None
+        self._lifecycle_lock = threading.RLock()
 
     @property
     def url(self) -> str:
@@ -362,30 +363,63 @@ class ServerRunner:
     @deal.raises(OSError)
     def start(self) -> None:
         """Bind the port and start serving on a worker thread."""
-        self.server = make_server(self.state)
-        self.state.set_paused(False)
-        self.worker = threading.Thread(
-            target=self.server.serve_forever, name="serv-http", daemon=True
-        )
-        self.worker.start()
+        with self._lifecycle_lock:
+            if self.server is not None:
+                return
+            self.server = make_server(self.state)
+            self.state.set_paused(False)
+            self.worker = threading.Thread(
+                target=self.server.serve_forever, name="serv-http", daemon=True
+            )
+            self.worker.start()
 
     def pause(self) -> None:
         """Release the port so other programs can use it."""
-        self.state.set_paused(True)
-        if self.server is not None:
-            self.server.shutdown()
-            self.server.server_close()
-            self.server = None
-        if self.worker is not None:
-            self.worker.join(timeout=5)
-            self.worker = None
+        with self._lifecycle_lock:
+            self.state.set_paused(True)
+            if self.server is not None:
+                self.server.shutdown()
+                self.server.server_close()
+                self.server = None
+            if self.worker is not None:
+                self.worker.join(timeout=5)
+                self.worker = None
 
     @deal.raises(OSError)
     def resume(self) -> None:
         """Take the port back and start serving again."""
-        if self.server is not None:
-            return
-        self.start()
+        with self._lifecycle_lock:
+            if self.server is not None:
+                return
+            self.start()
+
+    @deal.raises(OSError, ValueError)
+    def restart_root(self, root: Path) -> None:
+        """Restart the file server on its current port with a new root."""
+        new_root = Path(root).expanduser().resolve()
+        if not new_root.is_dir():
+            raise ValueError(f"not a directory: {new_root}")
+        with self._lifecycle_lock:
+            old_root = self.state.root
+            if new_root == old_root:
+                return
+            if self.server is None:
+                self.state.root = new_root
+                return
+            self.pause()
+            self.state.root = new_root
+            try:
+                self.resume()
+            except OSError:
+                self.state.root = old_root
+                try:
+                    self.resume()
+                except OSError as rollback_error:
+                    self.state.note_error(
+                        f"cannot restart on {old_root}: {rollback_error}"
+                    )
+                raise
+            self.state.clear_error()
 
     def toggle(self) -> None:
         """Pause a running server, or resume a paused one.
@@ -393,25 +427,19 @@ class ServerRunner:
         A failed resume (another program took the port) leaves the server
         paused and records the reason for the tray menu.
         """
-        if self.paused:
-            try:
-                self.resume()
-            except OSError as error:
-                self.state.set_paused(True)
-                self.state.note_error(f"cannot resume on port {self.state.port}: {error}")
-        else:
-            self.pause()
+        with self._lifecycle_lock:
+            if self.paused:
+                try:
+                    self.resume()
+                except OSError as error:
+                    self.state.set_paused(True)
+                    self.state.note_error(f"cannot resume on port {self.state.port}: {error}")
+            else:
+                self.pause()
 
     def shutdown(self) -> None:
         """Stop serving and close the socket."""
-        self.state.set_paused(True)
-        if self.server is not None:
-            self.server.shutdown()
-            self.server.server_close()
-            self.server = None
-        if self.worker is not None:
-            self.worker.join(timeout=5)
-            self.worker = None
+        self.pause()
 
 
 def free_port(port: int) -> bool:

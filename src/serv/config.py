@@ -51,6 +51,7 @@ class ConfigError(ValueError):
 @dataclass(frozen=True)
 class ServerSection:
     port: int = 1002
+    root: str | None = None
     # File paths matching any of these globs are served verbatim: no Markdown
     # rendering and no syntax highlighting. `**` crosses directory separators.
     no_process: tuple[str, ...] = ("~/dev/game/**/build/**",)
@@ -246,6 +247,27 @@ def _font(section: dict, key: str, where: str) -> str:
     return value
 
 
+def _root(value: object) -> str | None:
+    """Validate and normalize an optional absolute serving directory."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ConfigError("server.root must be a non-empty absolute path")
+    try:
+        path = Path(value.strip()).expanduser()
+    except (OSError, RuntimeError, ValueError) as error:
+        raise ConfigError(f"server.root is not a usable path: {error}") from error
+    if not path.is_absolute():
+        raise ConfigError("server.root must be an absolute path")
+    try:
+        resolved = path.resolve()
+    except (OSError, RuntimeError, ValueError) as error:
+        raise ConfigError(f"server.root is not a usable path: {error}") from error
+    if not resolved.is_dir():
+        raise ConfigError(f"server.root is not a directory: {resolved}")
+    return str(resolved)
+
+
 def _glob_list(value: object, where: str) -> tuple[str, ...]:
     if not isinstance(value, (list, tuple)):
         raise ConfigError(f"{where} must be a list of glob patterns, got {value!r}")
@@ -318,6 +340,7 @@ def parse_config(data: dict, source: Path | None = None) -> Config:
     return Config(
         server=ServerSection(
             port=_integer(server.get("port", 1002), "server.port", 1, 65535),
+            root=_root(server.get("root")),
             no_process=_glob_list(server.get("no_process", ()), "server.no_process"),
             max_render_bytes=_integer(
                 server.get("max_render_bytes", 1_048_576),
@@ -410,10 +433,17 @@ def dump_config(config: Config) -> str:
     """Serialise a Config as commented TOML that loads back identically."""
     patterns = [_abbreviate_home(pattern) for pattern in config.server.no_process]
     no_process = ", ".join(_quote(pattern) for pattern in patterns)
+    server_root = []
+    if config.server.root is not None:
+        server_root = [
+            f"root = {_quote(config.server.root)}",
+            "# Absolute directory served by serv; omit to use the starting directory.",
+        ]
     sections = [
         _HEADER,
         "[server]",
         f"port = {config.server.port}",
+        *server_root,
         "# Absolute file paths matching any of these globs are served verbatim: no",
         "# Markdown rendering and no syntax highlighting. `**` crosses directories, and",
         "# a leading `~` means the home directory.",

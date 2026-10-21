@@ -65,6 +65,45 @@ def test_watcher_holds_config_lock_while_loading(
     assert lock_acquired_during_load == [False]
 
 
+def test_watcher_restarts_on_a_root_config_change(
+    tmp_path: Path, state: ServerState
+) -> None:
+    old_root = tmp_path / "old"
+    new_root = tmp_path / "new"
+    old_root.mkdir()
+    new_root.mkdir()
+    original = replace(
+        state.config,
+        server=replace(state.config.server, root=str(old_root)),
+    )
+    state.apply_config(original)
+    state.root = old_root
+    path = tmp_path / "serv.toml"
+    save_config(original, path)
+    restarted = []
+
+    def restart_root(root: Path) -> None:
+        restarted.append(root)
+        state.root = root
+
+    watcher = watch.ConfigWatcher(
+        state,
+        str(path),
+        root_for_config=lambda config: Path(config.server.root),
+        restart_root=restart_root,
+    )
+    changed = replace(
+        original,
+        server=replace(original.server, root=str(new_root)),
+    )
+    save_config(changed, path)
+    watcher.reload()
+
+    assert restarted == [new_root]
+    assert state.root == new_root
+    assert state.config.server.root == str(new_root)
+
+
 def test_watcher_reports_a_broken_file_and_keeps_serving(
     tmp_path: Path, state: ServerState
 ) -> None:

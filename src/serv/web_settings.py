@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import asdict, fields, replace
 import hmac
 import http.server
@@ -89,6 +90,7 @@ def _payload(state: ServerState) -> dict:
     config = state.config
     return {
         "config": _config_data(config),
+        "root": str(state.root),
         "schemes": [{"key": item.key, "label": item.label} for item in schemes.load_schemes()],
         "scheme": schemes.name_for(config),
         "labels": labels.load_labels(),
@@ -106,8 +108,14 @@ def _payload(state: ServerState) -> dict:
 class SettingsWebServer:
     """Serve the settings page on an OS-assigned loopback port."""
 
-    def __init__(self, state: ServerState) -> None:
+    def __init__(
+        self,
+        state: ServerState,
+        *,
+        restart_root: Callable[[Path], None] | None = None,
+    ) -> None:
         self.state = state
+        self._restart_root = restart_root
         self.token = secrets.token_urlsafe(32)
         self._thread: threading.Thread | None = None
         owner = self
@@ -221,7 +229,25 @@ class SettingsWebServer:
                         if not isinstance(key, str):
                             raise ValueError("Setting key must be text")
                         with owner.state.config_lock:
-                            config = update_config(owner.state.config, key, payload.get("value"))
+                            old_config = owner.state.config
+                            target = _save_path(old_config)
+                            restart_root = owner._restart_root
+                            if key == "server.root" and restart_root is None:
+                                raise ValueError("Root changes require a running server")
+                            config = update_config(old_config, key, payload.get("value"))
+                            if key == "server.root":
+                                if config.server.root is None or restart_root is None:
+                                    raise ValueError("Root cannot be empty")
+                                try:
+                                    restart_root(Path(config.server.root))
+                                except Exception:
+                                    try:
+                                        save_config(old_config, target)
+                                    except Exception as rollback_error:  # noqa: BLE001
+                                        owner.state.note_error(
+                                            f"settings root rollback failed: {rollback_error}"
+                                        )
+                                    raise
                             owner.state.apply_config(config)
                         response = _payload(owner.state)
                         response["saved_key"] = key
