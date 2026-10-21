@@ -1,7 +1,7 @@
 """Command line entry point.
 
 ``serv`` serves the current directory and shows a tray icon. The settings window
-is a separate process (``--settings``), because Tk and the tray both need the
+is a separate process (``--settings``), because Qt and the tray both need the
 main thread of their own process; the running server applies saved changes
 through its config watcher.
 """
@@ -12,7 +12,6 @@ import argparse
 import os
 from pathlib import Path
 import shutil
-import subprocess
 import sys
 
 from .config import ConfigError, load_config
@@ -49,16 +48,6 @@ def _parser(default_port: int) -> argparse.ArgumentParser:
         "--config",
         metavar="PATH",
         help="configuration file to read instead of ~/.config/serv/serv.toml",
-    )
-    parser.add_argument(
-        "--no-tray",
-        action="store_true",
-        help="serve without a tray icon",
-    )
-    parser.add_argument(
-        "--app",
-        action="store_true",
-        help="open the settings window when starting",
     )
     parser.add_argument(
         "--no-gui",
@@ -106,18 +95,11 @@ def _delegate_ipython(port: int) -> None:
 
 def _open_settings_window(config) -> None:
     """Run the settings window in this process, asking the first-run question."""
-    from . import ui  # imported late: needs tkinter
+    from . import ui  # imported late: needs PySide6
 
     if not user_config_path().is_file():
         ui.ask_start_at_login_if_needed(config)
     ui.show_settings(config)
-
-
-def _spawn_settings() -> None:
-    """Open the settings window as a separate process."""
-    from . import autostart
-
-    subprocess.Popen([*autostart.base_command(), "--settings"], close_fds=True)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -146,42 +128,20 @@ def main(argv: list[str] | None = None) -> int:
 
     state = ServerState.create(config, root, args.port)
     runner = ServerRunner(state)
-    try:
-        runner.start()
-    except OSError:
-        # One process owns the tray and the server. If the port is taken, this
-        # launch cannot become that process, so it says why and exits.
-        message = (
-            f"serv cannot start: port {args.port} is already in use.\n\n"
-            "Another copy is probably running. Quit it from the menu-bar icon "
-            "(Quit serv) and start again."
-        )
-        print(f"serv: {message}", file=sys.stderr)
-        if not args.no_tray:
-            try:
-                from . import ui
-
-                ui.show_error("serv cannot start", message)
-            except Exception:  # noqa: BLE001 - no display; the message above stands
-                pass
-        return 1
-
-    print(f"serving {root} at {runner.url}", flush=True)
-
     watcher = watch.start(state, args.config)
 
     try:
-        if args.no_tray:
-            if runner.worker is not None:
-                runner.worker.join()
-        else:
-            from . import tray  # imported late: needs pystray and Pillow
+        from . import tray  # imported late: needs pystray and Pillow
 
-            # The bundle launcher always adds --app; --no-gui (the login item)
-            # wins so no window appears at login.
-            if args.app and not args.no_gui:
-                _spawn_settings()
-            tray.run_tray(runner)
+        # The tray confirms its native item from the AppKit event loop before
+        # binding the server port. Settings are opened only from the tray menu.
+        if not tray.run_tray(runner):
+            detail = state.snapshot().last_error or "The tray could not be created."
+            if not args.no_gui:
+                from . import ui
+
+                ui.show_error("serv could not start", detail)
+            return 1
     except KeyboardInterrupt:
         print("\nstopped")
     finally:

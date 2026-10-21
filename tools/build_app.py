@@ -6,7 +6,7 @@ The bundle is deliberately inspectable. It contains no compiled Python archive:
     serv.app/
       Contents/
         Info.plist                 LSUIElement, so there is no Dock icon
-        MacOS/serv                 small shell launcher
+        MacOS/serv                 native launcher with embedded Python
         Resources/
           pysrc/serv/*.py          the server, as plain source files
           data/                    stylesheet template, icons, chemistry JS
@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
+import platform
 import plistlib
 import shutil
 import subprocess
@@ -60,10 +61,21 @@ PYTHON_EXCLUDES = (
     "site-packages/pip-*",
     "site-packages/setuptools",
     "site-packages/pkg_resources",
+    "tkinter",
+    "lib-dynload/_tkinter*",
 )
 
-#: Kept: Tcl/Tk, because the settings window is Tk. Dropped: build metadata.
-PYTHON_LIBRARY_EXCLUDES = ("pkgconfig",)
+#: Qt replaces Tcl/Tk for settings; keep only runtime libraries the app needs.
+PYTHON_LIBRARY_EXCLUDES = (
+    "pkgconfig",
+    "tcl9",
+    "tcl9.0",
+    "tk9.0",
+    "thread3.0.6",
+    "itcl4.3.8",
+    "libtcl9.0.dylib",
+    "libtcl9tk9.0.dylib",
+)
 
 
 def log(message: str) -> None:
@@ -223,24 +235,38 @@ def write_info_plist() -> None:
     (CONTENTS / "Info.plist").write_bytes(plistlib.dumps(payload))
 
 
-LAUNCHER = """#!/bin/sh
-# serv launcher: run the plain-Python sources in Resources/pysrc with the
-# interpreter in Resources/python. Edit those sources and restart the app.
-set -eu
-HERE=$(cd "$(dirname "$0")" && pwd)
-RESOURCES="$HERE/../Resources"
-export PYTHONPATH="$RESOURCES/pysrc"
-export PYTHONDONTWRITEBYTECODE=
-export SERV_APP_LAUNCHER="$HERE/serv"
-unset PYTHONHOME
-exec "$RESOURCES/python/bin/python3" -m serv --app "$@"
-"""
+def write_launcher(version: str) -> None:
+    """Compile a native bundle executable that embeds the bundled Python.
 
-
-def write_launcher() -> None:
+    Finder and ControlCenter must see one stable app process. Calling Python's
+    main function in-process keeps the executable identified as this app; a
+    shell script that execs Python loses that identity on recent macOS.
+    """
+    base = managed_python()
     path = MACOS / APP_NAME
-    path.write_text(LAUNCHER)
-    path.chmod(0o755)
+    library_name = f"libpython{version}.dylib"
+    source_library = base / "lib" / library_name
+    bundled_library = PYTHON / "lib" / library_name
+    launcher_source = ROOT / "tools" / "app_launcher.c"
+    run(
+        [
+            "clang",
+            "-O2",
+            f"-I{base / 'include' / f'python{version}'}",
+            f"-L{base / 'lib'}",
+            str(launcher_source),
+            f"-lpython{version}",
+            "-Wl,-headerpad_max_install_names",
+            "-o",
+            str(path),
+        ]
+    )
+
+    old_id = run(["otool", "-D", str(source_library)], capture_output=True).stdout.splitlines()[1]
+    relative_id = f"@rpath/{library_name}"
+    run(["install_name_tool", "-id", relative_id, str(bundled_library)])
+    run(["install_name_tool", "-change", old_id, relative_id, str(path)])
+    run(["install_name_tool", "-add_rpath", "@executable_path/../Resources/python/lib", str(path)])
 
 
 def sign() -> None:
@@ -251,16 +277,29 @@ def sign() -> None:
         text=True,
     )
     if result.returncode != 0:
-        log(f"codesign skipped: {result.stderr.strip()[:120]}")
+        raise SystemExit(f"codesign failed: {result.stderr.strip()}")
+    verification = subprocess.run(
+        ["codesign", "--verify", "--deep", "--strict", str(APP)],
+        capture_output=True,
+        text=True,
+    )
+    if verification.returncode != 0:
+        raise SystemExit(f"bundle signature is invalid: {verification.stderr.strip()}")
 
 
 def smoke_test(version: str) -> None:
     """Prove the bundled interpreter imports serv and the dependencies."""
     script = (
-        "import tkinter, pystray, PIL, PIL.Image, markdown_it, mdit_py_plugins, deal;"
+        "import PySide6.QtCore, PySide6.QtGui, PySide6.QtWidgets;"
+        "import pystray, PIL, PIL.Image, markdown_it, mdit_py_plugins, deal;"
         "import serv, serv.server, serv.ui, serv.tray, serv.autostart;"
-        "root = tkinter.Tk(); root.withdraw(); root.destroy();"
-        "print('imports ok, Tk', tkinter.TkVersion)"
+        "from serv.config import load_config;"
+        "from serv.ui import SettingsWindow;"
+        "window = SettingsWindow(load_config());"
+        "assert any(label.pixmap() is not None and not label.pixmap().isNull() "
+        "for label in window.root.findChildren(PySide6.QtWidgets.QLabel));"
+        "window.root.close();"
+        "print('imports and settings UI ok, Qt', PySide6.QtCore.qVersion())"
     )
     result = run(
         [str(PYTHON / "bin" / "python3"), "-c", script],
@@ -269,21 +308,127 @@ def smoke_test(version: str) -> None:
             "PYTHONPATH": str(PYSRC),
             "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
             "HOME": str(Path.home()),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "QT_QPA_PLATFORM": "offscreen",
+            "QT_STYLE_OVERRIDE": "Fusion",
         },
     )
     log(result.stdout.strip())
+
+    launcher_result = run([str(MACOS / APP_NAME), "--help"], capture_output=True)
+    if "usage: serv" not in launcher_result.stdout:
+        raise SystemExit("native app launcher smoke test did not print serv help")
+    log("native launcher and embedded Python ok")
     log(f"python {version} bundled")
 
 
+def remove_path(path: Path) -> None:
+    """Remove a file, symlink, or directory without following symlinks."""
+    if path.is_symlink() or path.is_file():
+        path.unlink(missing_ok=True)
+    elif path.is_dir():
+        shutil.rmtree(path, ignore_errors=True)
+
+
 def trim_site_packages() -> None:
-    """Drop the PyObjC test bundle; it is the largest unused package."""
+    """Remove Qt build assets and modules that the settings UI does not use."""
+    python_root = RESOURCES / "python"
     for pattern in ("PyObjCTest", "pyobjc_framework_cocoa-*/tests"):
-        for path in (RESOURCES / "python").rglob(pattern):
-            if path.is_dir():
-                shutil.rmtree(path, ignore_errors=True)
-    free = RESOURCES / "python" / "lib" / "python3.14" / "site-packages" / "bin"
-    if free.is_dir():
-        shutil.rmtree(free, ignore_errors=True)
+        for path in python_root.rglob(pattern):
+            remove_path(path)
+    free = python_root / "lib" / "python3.14" / "site-packages" / "bin"
+    remove_path(free)
+
+    site = python_root / "lib" / "python3.14" / "site-packages"
+    pyside = site / "PySide6"
+    qt = pyside / "Qt"
+    if not qt.is_dir():
+        raise SystemExit(f"PySide6 Qt runtime not found: {qt}")
+
+    keep_modules = {"QtCore.abi3.so", "QtDBus.abi3.so", "QtGui.abi3.so", "QtWidgets.abi3.so"}
+    for path in pyside.iterdir():
+        if path.is_file() and path.name.endswith(".pyi"):
+            remove_path(path)
+        elif path.is_file() and path.name.startswith("Qt") and path.suffix == ".so":
+            if path.name not in keep_modules:
+                remove_path(path)
+
+    for name in (
+        "Assistant.app",
+        "Designer.app",
+        "Linguist.app",
+        "doc",
+        "glue",
+        "include",
+        "lib",
+        "scripts",
+        "typesystems",
+    ):
+        remove_path(pyside / name)
+    remove_path(pyside / "libpyside6qml.abi3.6.11.dylib")
+
+    qt_lib = qt / "lib"
+    keep_frameworks = {"QtCore.framework", "QtDBus.framework", "QtGui.framework", "QtWidgets.framework"}
+    for path in qt_lib.iterdir():
+        if path.name not in keep_frameworks:
+            remove_path(path)
+
+    for name in ("libexec", "metatypes", "qml", "translations"):
+        remove_path(qt / name)
+
+    plugins = qt / "plugins"
+    for path in plugins.iterdir():
+        if path.name != "platforms":
+            remove_path(path)
+    platforms = plugins / "platforms"
+    keep_platforms = {"libqcocoa.dylib", "libqoffscreen.dylib"}
+    for path in platforms.iterdir():
+        if path.name not in keep_platforms:
+            remove_path(path)
+
+    for path in pyside.rglob("*.pyi"):
+        remove_path(path)
+    for path in python_root.rglob("__pycache__"):
+        remove_path(path)
+
+
+def thin_python_binaries(version: str) -> None:
+    """Keep only the architecture used by the bundled Python interpreter."""
+    python_binary = PYTHON / "bin" / f"python{version}"
+    architectures = run(["lipo", "-archs", str(python_binary)], capture_output=True).stdout.split()
+    architecture = architectures[0] if len(architectures) == 1 else platform.machine()
+    if architecture not in architectures:
+        raise SystemExit(f"Python architecture {architecture} is unavailable: {architectures}")
+
+    candidates = set(PYTHON.rglob("*.so")) | set(PYTHON.rglob("*.dylib"))
+    candidates.add(python_binary)
+    qt_lib = PYTHON / "lib" / f"python{version}" / "site-packages" / "PySide6" / "Qt" / "lib"
+    for framework in qt_lib.glob("*.framework"):
+        candidates.add(framework / "Versions" / "A" / framework.stem)
+
+    thinned = 0
+    for path in sorted(candidates):
+        if path.is_symlink() or not path.is_file():
+            continue
+        result = subprocess.run(["lipo", "-archs", str(path)], capture_output=True, text=True)
+        if result.returncode != 0:
+            continue
+        binary_architectures = result.stdout.split()
+        if architecture not in binary_architectures:
+            raise SystemExit(f"{path} lacks bundled Python architecture {architecture}: {binary_architectures}")
+        if len(binary_architectures) == 1:
+            continue
+
+        temporary = path.with_name(f".{path.name}.thin")
+        try:
+            run(["lipo", "-thin", architecture, str(path), "-output", str(temporary)])
+            shutil.copymode(path, temporary)
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+        thinned += 1
+
+    log(f"thinned {thinned} universal binaries to {architecture}")
 
 
 def install() -> None:
@@ -312,10 +457,11 @@ def main() -> int:
     copy_data()
     build_icon()
     trim_site_packages()
+    thin_python_binaries(version)
     write_info_plist()
-    write_launcher()
-    sign()
+    write_launcher(version)
     smoke_test(version)
+    sign()
 
     total = sum(path.stat().st_size for path in APP.rglob("*") if path.is_file())
     log(f"bundle size: {total / (1024 * 1024):.0f} MiB")

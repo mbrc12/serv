@@ -12,6 +12,7 @@ dependencies = [
     "markdown-it-py>=4.2.0",
     "mdit-py-plugins>=0.6.1",
     "pillow>=13.0.0",
+    "pyside6-essentials>=6.11.1,<6.12",
     "pystray>=0.19.5",
 ]
 

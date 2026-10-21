@@ -4,7 +4,7 @@
 
 - `src/serv/` — the server: `server.py` (routing), `markdown.py` (renderer),
   `page.py` (HTML shell, code pages, listings), `plugins/` (math, chemistry,
-  Mermaid), `config.py` + `theme.py` (settings → CSS), `ui.py` (Tk settings
+  Mermaid), `config.py` + `theme.py` (settings → CSS), `ui.py` (Qt Fusion settings
   window), `tray.py` (pystray), `autostart.py` (login item per OS), `watch.py`
   (live config reload), plus pure helpers `colors.py`, `units.py`, `schemes.py`,
   `fonts.py`, `labels.py`, `appearance.py`.
@@ -31,13 +31,12 @@
   `launchctl kickstart -k gui/$(id -u)/local.serv`.
 - Use `deal` contracts at data-flow boundaries (see `paths.py`, `config.py`,
   `cache.py`). When a validator takes `result`, name the parameter `result`.
-- The UI is Tk and the tray is pystray, on every platform. Neither imports
-  AppKit directly; macOS-specific code is limited to the template tray image and
-  the launchd login item.
-- The settings window runs as its own process (`serv --settings`). Do not move
-  it into the server process: Tk and pystray both need the main thread there.
-- Toolkits take colors as `#rrggbb` without alpha: use `colors.hex_for_picker`
-  to composite translucency instead of inventing a second palette.
+- The UI uses PySide6 with Qt Fusion and the tray uses pystray on every platform.
+  The settings window runs as its own process (`serv --settings`); keep it
+  separate from the server's tray event loop.
+- Keep the Qt Fusion style and dialogs non-native so settings look consistent
+  across platforms. Color swatches use configured colors; use
+  `colors.hex_for_picker` to composite translucency.
 
 ## Checks before handing work back
 

@@ -4,8 +4,8 @@ pystray gives one API over NSStatusBar on macOS, the Win32 notification area on
 Windows and AppIndicator/XEmbed on Linux. The icon image is the white-with-outline
 glyph, which stays legible on light and dark panels without asking the OS.
 
-The settings window is a separate process (``serv --settings``) because both Tk
-and the tray want the main thread; the server and this tray keep the main thread,
+The settings window is a separate process (``serv --settings``) because Qt and
+pystray each need the main thread; the server and this tray keep the main thread,
 and the window exits on close while the tray stays.
 """
 
@@ -124,6 +124,7 @@ class Tray:
         self.state = runner.state
         self.url = runner.url
         self._stop_refresh = threading.Event()
+        self._startup_error: Exception | None = None
         self._dark = appearance.is_dark()
         self.icon = pystray.Icon(
             "serv",
@@ -198,8 +199,8 @@ class Tray:
 
     def _quit(self, _icon=None, _item=None) -> None:
         self._stop_refresh.set()
+        # The main thread owns shutdown after icon.run returns.
         self.icon.stop()
-        threading.Thread(target=self.runner.shutdown, daemon=True).start()
 
     # ------------------------------------------------------------ refresh
 
@@ -212,7 +213,12 @@ class Tray:
     def _refresh_loop(self) -> None:
         waited = 0.0
         while not self._stop_refresh.wait(REFRESH_SECONDS):
-            self._refresh()
+            if sys.platform == "darwin":
+                from PyObjCTools import AppHelper
+
+                AppHelper.callAfter(self._refresh)
+            else:
+                self._refresh()
             waited += REFRESH_SECONDS
             if waited >= APPEARANCE_SECONDS:
                 waited = 0.0
@@ -231,24 +237,51 @@ class Tray:
         except Exception:  # noqa: BLE001 - the icon may already be gone
             pass
 
+    def _start_server(self, icon) -> None:
+        """Show the native item and start HTTP from its ready event loop."""
+        try:
+            icon.visible = True
+            if sys.platform == "darwin":
+                _apply_macos_template(self.icon, attempts=1)
+                button = self.icon._status_item.button()
+                if button is None or button.isHidden() or button.image() is None:
+                    raise RuntimeError("macOS did not create a visible status item")
+            self.runner.start()
+        except Exception as error:  # noqa: BLE001 - startup must fail closed
+            self._startup_error = error
+            self.state.note_error(f"tray/server startup failed: {error}")
+            icon.stop()
+            return
+        print(f"serving {self.state.root} at {self.url}", flush=True)
+
     def run(self) -> None:
-        """Run the tray on the main thread until it is quit."""
+        """Show the tray, then serve until the user quits the tray."""
         refresh = threading.Thread(
             target=self._refresh_loop, name="serv-tray-refresh", daemon=True
         )
         refresh.start()
-        if sys.platform == "darwin":
-            threading.Thread(
-                target=_apply_macos_template, args=(self.icon,), daemon=True
-            ).start()
-        self.icon.run()
+
+        def setup(icon) -> None:
+            if sys.platform == "darwin":
+                # pystray invokes setup on a worker. Schedule AppKit work on
+                # the main thread after NSApplication's event loop has started.
+                from PyObjCTools import AppHelper
+
+                AppHelper.callAfter(self._start_server, icon)
+            else:
+                self._start_server(icon)
+
+        self.icon.run(setup=setup)
+        if self._startup_error is not None:
+            raise self._startup_error
 
 
 def run_tray(runner: ServerRunner) -> bool:
     """Show the tray, returning False when this session cannot display one."""
     try:
         Tray(runner).run()
-    except Exception as error:  # noqa: BLE001 - headless sessions have no tray
-        print(f"tray unavailable ({type(error).__name__}: {error}); serving without it", flush=True)
+    except Exception as error:  # noqa: BLE001 - report startup failure to the owner
+        runner.state.note_error(f"tray could not start: {error}")
+        print(f"tray unavailable ({type(error).__name__}: {error})", flush=True)
         return False
     return True

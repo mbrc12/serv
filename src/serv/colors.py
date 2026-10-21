@@ -1,7 +1,7 @@
 """CSS color parsing and formatting, independent of any toolkit.
 
 The settings window needs to turn ``#7146a6`` into a color picker value and back
-again. Keeping that arithmetic here means both the Tk window and the tests use
+again. Keeping that arithmetic here means both the Qt window and the tests use
 one implementation, with no GUI toolkit imported.
 """
 
@@ -69,8 +69,8 @@ def css_color(red: float, green: float, blue: float, alpha: float = 1.0) -> str:
 def hex_for_picker(value: str) -> str:
     """Return a #rrggbb color, compositing any transparency over white.
 
-    Tk color pickers and canvas fills have no alpha channel, so a translucent
-    config color is shown as it would look on a white page.
+    The Qt color picker and swatches use opaque RGB, so a translucent config
+    color is shown as it would look on a white page.
     """
     red, green, blue, alpha = parse_css_color(value)
     return css_color(

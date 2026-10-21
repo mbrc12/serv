@@ -8,7 +8,7 @@ runs on macOS, Linux and Windows with a tray icon and a desktop settings window.
 - Math, chemistry and Mermaid are optional plugins, loaded from a CDN on pages
   that use them.
 - All colours live in a TOML config file, not in the source.
-- One Tk settings window and one pystray tray on every platform.
+- One Qt Fusion settings window and one pystray tray on every platform.
 - The macOS build is an app bundle of readable `.py` files, so an agent can edit
   the running code directly.
 
@@ -16,11 +16,11 @@ runs on macOS, Linux and Windows with a tray icon and a desktop settings window.
 
 ```text
 <install>/serv.app/                       macOS app bundle (see Build below)
-  Contents/MacOS/serv                     shell launcher
+  Contents/MacOS/serv                     native launcher with embedded Python
   Contents/Resources/pysrc/serv/*.py      the server, as plain source
   Contents/Resources/data/                stylesheet template, icons, chemistry JS
   Contents/Resources/config/*.toml        default config, schemes, fonts, labels
-  Contents/Resources/python/              standalone CPython, Tk and dependencies
+  Contents/Resources/python/              standalone CPython, Qt and dependencies
 ~/.config/serv/serv.toml                  your settings (created on first save)
 ```
 
@@ -38,9 +38,8 @@ Source checkout: `~/dev/serv/` (`src/serv/`, `data/`, `config/`, `tests/`,
   quitting the tray (Quit serv) stops it.
 - The login item runs the same app with `--no-gui`: tray and server, no window.
   It has no `KeepAlive`, so quitting stays quit until the next login.
-- Launching the app adds `--app`, which opens the settings window too. Closing
-  that window leaves the tray running (the window is its own process,
-  `serv --settings`).
+- Opening the macOS app starts the tray and server without opening a window.
+  Use **Settings…** in the tray menu to open settings in a separate process.
 - A second copy cannot share the port: it reports the conflict in a dialog and
   exits.
 - The tray menu: status, Open in Browser, Copy URL, Pause/Resume, Start at
@@ -52,12 +51,15 @@ Source checkout: `~/dev/serv/` (`src/serv/`, `data/`, `config/`, `tests/`,
 From a checkout or a terminal:
 
 ```sh
-uv run serv --no-tray --port 1010 --root "$HOME"
-uv run serv --settings                          # settings window only
+open -a "$HOME/Applications/serv.app"           # macOS: start the tray and server
+uv run serv --settings                           # open settings only
 uv run pytest
 launchctl kickstart -k gui/$(id -u)/local.serv   # macOS: restart the login item
 systemctl --user restart serv                    # Linux: restart the login item
 ```
+
+- `uv run serv` is a foreground development command. It keeps the terminal
+  occupied while its tray and server run.
 
 ## Editing the running app
 
@@ -146,17 +148,17 @@ uv run python tools/make_tray_icon.py       # re-render tray and app icons
 ```
 
 The macOS build embeds a uv-managed standalone CPython (`uv python install 3.14`)
-with Tk and the runtime dependencies installed into its `site-packages`, then
-copies the sources and data unmodified. The bundle is ad-hoc signed. On Linux and
-Windows, run from a checkout (`uv run serv`) or package with your usual tool; the
-code path is identical apart from the login item and the tray backend.
+with PySide6 and the runtime dependencies installed into its `site-packages`, then
+copies the sources and data unmodified. The settings UI uses Qt's Fusion style and
+non-native dialogs for a consistent appearance. The bundle is ad-hoc signed. On
+Linux and Windows, run from a checkout (`uv run serv`) or package with your usual
+tool; the code path is identical apart from the login item and the tray backend.
 
 ## Decisions
 
-- **Tk for the settings window, pystray for the tray.** The same window and menu
-  work on all three platforms, and neither needs AppKit, GTK or Windows APIs in
-  our code.
-- **The settings window is a separate process.** Tk and the tray both want the
+- **Qt Fusion for settings, pystray for the tray.** Fusion gives the built-in
+  controls and dialogs the same cross-platform style without custom widgets.
+- **The settings window is a separate process.** Qt and the tray both need the
   main thread; splitting them also means the window can close while the server
   keeps running, with changes arriving through the config watcher.
 - **macOS ships as an app bundle with plain sources**, not a single binary, so
