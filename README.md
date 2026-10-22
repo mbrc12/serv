@@ -41,6 +41,10 @@ uv run python tools/build_app.py --install
 open -a "$HOME/Applications/serv.app"
 ```
 
+The icon is rendered from SVG, so macOS needs cairo: `brew install cairo`. If
+`cairosvg` still cannot find it, prefix the build with
+`DYLD_FALLBACK_LIBRARY_PATH=/opt/homebrew/lib`.
+
 The app bundle includes Python and its dependencies. The settings page uses a
 separate loopback-only port; it does not share the content server's port.
 

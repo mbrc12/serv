@@ -689,3 +689,96 @@ body:not(.show-hidden) .hidden-entry {
   outline: 2px solid var(--teal);
   outline-offset: 2px;
 }
+
+/* ------------------------------------------------------------------ mobile */
+
+/* Narrow screens get the reading width back: the configured gutters are sized
+   for a desktop column and would leave a phone with a sliver of text. */
+@media (max-width: 40rem) {
+  body.markdown-page,
+  body.listing-page {
+    padding: 0 1rem;
+  }
+
+  body.markdown-page {
+    font-size: calc(${md_size} * 0.9);
+  }
+
+  body.markdown-page h1 {
+    font-size: 1.6rem;
+  }
+
+  body.markdown-page h2 {
+    font-size: 1.3rem;
+  }
+
+  body.markdown-page pre {
+    padding: 0.75em 0.85em;
+    border-radius: 7px;
+  }
+
+  /* Wide tables scroll sideways inside their own box instead of clipping the
+     last column, which was invisible on a phone. */
+  body.markdown-page table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    font-size: 0.95rem;
+  }
+
+  body.markdown-page th,
+  body.markdown-page td {
+    padding: 0.4em 0.55em;
+    max-width: 12rem;
+  }
+
+  #TOC {
+    margin: 1rem 0 1.5rem;
+    padding: 0.5rem 0.75rem;
+  }
+
+  body.markdown-page ul,
+  body.markdown-page ol {
+    padding-left: 1.4rem;
+  }
+
+  blockquote {
+    margin: 1rem 0;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .markdown-footer {
+    gap: 0.35rem 0.6rem;
+    font-size: 0.75rem;
+    margin-top: 1.75rem;
+  }
+
+  /* One full-width row per entry reads better than two cramped columns, and
+     each row keeps a comfortable tap target. */
+  body.listing-page h1 {
+    font-size: 1.35rem;
+  }
+
+  .directory-list {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    font-size: 0.95rem;
+  }
+
+  /* One flat list with dividers: name and its details read as one row, which
+     the shared grid cannot do once every tile gets its own line. */
+  .directory-list li + li {
+    border-top: 1px solid var(--border);
+  }
+
+  .directory-list a.entry {
+    height: auto;
+    padding: 0.55rem 0.35rem;
+    min-height: 2.75rem;
+    border-radius: 0;
+  }
+
+  .directory-list .meta {
+    font-size: 0.75rem;
+  }
+}

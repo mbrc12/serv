@@ -56,11 +56,13 @@ GOOGLE_FONTS = "https://fonts.googleapis.com/css2"
 
 def _variable_name(section: str, key: str) -> str:
     """Map a config section and key onto the custom property the CSS expects."""
+    # CSS custom properties use hyphens, the config uses underscores.
+    name = key.replace("_", "-")
     if section == "palette":
-        return f"--{key}"
+        return f"--{name}"
     if section == "accents":
-        return f"--accent-{key}"
-    return f"--{section}-{key}"
+        return f"--accent-{name}"
+    return f"--{section}-{name}"
 
 
 def _import_line(name: str, weights: str) -> str | None:

@@ -110,6 +110,9 @@ def managed_python() -> Path:
         ],
         capture_output=True,
         env=clean_environment(),
+        # uv discovers the `.venv` in the working directory even with
+        # --no-project, so ask from a directory with no project.
+        cwd="/",
     )
     base = Path(result.stdout.strip()).parent.parent
     if "uv/python" not in str(base):
