@@ -215,6 +215,18 @@ img {
   border-radius: 8px;
 }
 
+/* A paragraph holding only an image reads as a figure, so centre it. The
+   renderer marks those paragraphs; images mixed into text stay inline. */
+body.markdown-page p.figure {
+  text-align: center;
+}
+
+body.markdown-page p.figure img {
+  display: block;
+  height: auto;
+  margin: 0.25rem auto;
+}
+
 kbd {
   border: 1px solid var(--border);
   border-bottom-width: 2px;

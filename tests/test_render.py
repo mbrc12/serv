@@ -188,3 +188,20 @@ def test_word_count_skips_punctuation_only_tokens() -> None:
     assert word_count("one two  three\nfour") == 4
     assert word_count("# Heading\n\n- item | cell") == 3
     assert word_count("") == 0
+
+
+def test_image_only_paragraph_is_a_figure(renderer: MarkdownRenderer) -> None:
+    html = render(renderer, "![Alt](figure.png)\n")
+    assert '<p class="figure">' in html
+
+
+def test_linked_image_paragraph_is_a_figure(renderer: MarkdownRenderer) -> None:
+    html = render(renderer, "[![Alt](figure.png)](https://example.com)\n")
+    assert '<p class="figure">' in html
+    assert "<a href=\"https://example.com\">" in html
+
+
+def test_image_in_a_sentence_stays_inline(renderer: MarkdownRenderer) -> None:
+    html = render(renderer, "An inline ![Alt](icon.png) image keeps its place.\n")
+    assert 'class="figure"' not in html
+    assert "<p>An inline" in html

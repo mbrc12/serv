@@ -167,9 +167,37 @@ class MarkdownRenderer:
                 languages.add(name.lower())
         return languages
 
+    def _mark_figures(self, tokens: list[Token]) -> None:
+        """Give image-only paragraphs a class so the CSS can centre them.
+
+        A paragraph whose only content is an image, or a link around an image,
+        is a figure. Images sharing a line with text are left inline.
+        """
+        for index, token in enumerate(tokens):
+            if token.type != "paragraph_open" or index + 1 >= len(tokens):
+                continue
+            inline = tokens[index + 1]
+            if inline.type != "inline" or not inline.children:
+                continue
+            meaningful = [
+                child
+                for child in inline.children
+                if not (child.type == "text" and not child.content.strip())
+            ]
+            only_image = len(meaningful) == 1 and meaningful[0].type == "image"
+            linked_image = (
+                len(meaningful) == 3
+                and meaningful[0].type == "link_open"
+                and meaningful[1].type == "image"
+                and meaningful[2].type == "link_close"
+            )
+            if only_image or linked_image:
+                token.attrSet("class", "figure")
+
     def render_body(self, source: str) -> tuple[str, list[tuple[int, str, str]]]:
         """Render Markdown source to a body fragment and its heading list."""
         tokens = self.md.parse(source)
+        self._mark_figures(tokens)
         headings = self._headings(tokens)
         return self.md.renderer.render(tokens, self.md.options, {}), headings
 
@@ -187,6 +215,7 @@ class MarkdownRenderer:
         Passing the file size and modification time adds a metadata footer.
         """
         tokens = self.md.parse(source)
+        self._mark_figures(tokens)
         headings = self._headings(tokens)
         body = self.md.renderer.render(tokens, self.md.options, {})
         toc = build_toc(headings)
