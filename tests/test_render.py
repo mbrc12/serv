@@ -205,3 +205,11 @@ def test_image_in_a_sentence_stays_inline(renderer: MarkdownRenderer) -> None:
     html = render(renderer, "An inline ![Alt](icon.png) image keeps its place.\n")
     assert 'class="figure"' not in html
     assert "<p>An inline" in html
+
+
+def test_toc_is_folded_by_default(renderer: MarkdownRenderer) -> None:
+    html = render(renderer, "# Title\n\n## Part\n")
+    assert '<details class="toc">' in html
+    assert '<details class="toc" open' not in html
+    assert "<summary>Contents</summary>" in html
+    assert '<nav id="TOC"' in html

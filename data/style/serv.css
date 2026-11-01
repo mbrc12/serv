@@ -354,11 +354,31 @@ section.footnotes ol {
   text-decoration: none;
 }
 
-#TOC {
-  margin: 1.5rem 0 2rem;
-  padding: 0.75rem 1rem;
-  border-left: 3px solid var(--green);
-  border-radius: 0 10px 10px 0;
+/* Folded by default; the summary is the whole click target. */
+.toc {
+  margin: 1.25rem 0 1.75rem;
+  padding: 0;
+  border: 0;
+}
+
+.toc > summary {
+  cursor: pointer;
+  padding: 0.25rem 0;
+  color: var(--green);
+  font-weight: 600;
+}
+
+.toc > summary:hover {
+  text-decoration: underline;
+}
+
+.toc > summary:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+.toc[open] > summary {
+  margin-bottom: 0.25rem;
 }
 
 #TOC ul {
@@ -744,9 +764,8 @@ body:not(.show-hidden) .hidden-entry {
     max-width: 12rem;
   }
 
-  #TOC {
+  .toc {
     margin: 1rem 0 1.5rem;
-    padding: 0.5rem 0.75rem;
   }
 
   body.markdown-page ul,

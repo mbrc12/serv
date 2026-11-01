@@ -86,12 +86,21 @@ def _render_toc_list(nodes: list[Heading]) -> str:
 
 
 def build_toc(entries: list[tuple[int, str, str]]) -> str:
-    """Return a pandoc-shaped table of contents, or '' for a headingless page."""
+    """Return a folded table of contents, or '' for a headingless page.
+
+    The native ``details`` element keeps the folder working without JavaScript;
+    omitting ``open`` leaves it closed until the reader asks for it.
+    """
     if not entries:
         return ""
     top = min(level for level, _, _ in entries)
     nodes, _ = _nest(entries, level=top)
-    return f'<nav id="TOC" role="doc-toc">{_render_toc_list(nodes)}</nav>'
+    return (
+        '<details class="toc">'
+        "<summary>Contents</summary>"
+        f'<nav id="TOC" role="doc-toc">{_render_toc_list(nodes)}</nav>'
+        "</details>"
+    )
 
 
 def place_toc(body: str, toc: str) -> str:
