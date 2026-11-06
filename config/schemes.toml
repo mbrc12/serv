@@ -7,6 +7,10 @@
 # darkened: where a role needs contrast, it uses a different member of the same
 # palette instead of a new shade.
 #
+# Tokyo Rain is the local derivative of Tokyo Night Day, so its values come from
+# that theme's own palette in ~/.config/nvim/lua/tokyo-rain/palette.lua and
+# ~/dev/jupyterlab-tokyo-rain/style/tokyo-rain.css, again role by role.
+#
 # Picking one copies these values into ~/.config/serv/serv.toml; that file stays
 # the single source of truth. A scheme must define every color serv uses.
 
@@ -85,6 +89,51 @@ tag = "#73daca"
 highlight = "rgba(187, 154, 247, 0.18)"
 block_bg = "#16161e"
 block_border = "#292e42"
+
+# -------------------------------------------------------------------- Tokyo Rain
+
+# A cooler, quieter Tokyo Night Day: page and text from the layout surfaces, all
+# six base colors at their muted values, and code tokens from the theme's
+# half-saturation syntax set. Surfaces stay in the theme's own ladder — the page
+# on layout-color0, hover and code blocks on bg_dark, selection on the editor
+# selection blue.
+
+[schemes.tokyo-rain]
+label = "Tokyo Rain"
+
+[schemes.tokyo-rain.palette]
+bg = "#e6e7ec"
+text = "#363f55"
+muted = "#5f6877"
+border = "#c4c8d4"
+hover = "#dcdde4"
+selected = "#cbd2e8"
+selected_text = "#2b3244"
+zebra = "transparent"
+red = "#a54756"
+orange = "#8d5934"
+green = "#3c704d"
+blue = "#42669a"
+teal = "#376f67"
+purple = "#7455ab"
+
+[schemes.tokyo-rain.accents]
+markdown = "#42669a"
+listing = "#7455ab"
+directory = "#42669a"
+
+[schemes.tokyo-rain.code]
+base = "#363f55"
+comment = "#5f6877"
+keyword = "#6d5e89"
+operator = "#4d566a"
+string = "#486451"
+function = "#536782"
+number = "#795c48"
+tag = "#89585f"
+highlight = "rgba(66, 102, 154, 0.16)"
+block_bg = "#dcdde4"
+block_border = "#c4c8d4"
 
 # -------------------------------------------------------------------- Catppuccin
 
