@@ -8,10 +8,15 @@ to call and what to send back.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import hashlib
 import http.server
 import io
+import ipaddress
+import json
+import os
 from pathlib import Path
 import socket
+import tempfile
 import threading
 import time
 import urllib.parse
@@ -23,8 +28,8 @@ from .config import Config
 from .constants import CSS_URL, JS_URL
 from .highlight import RAW_TEXT_EXTENSIONS, language_for
 from .markdown import MarkdownRenderer
-from .page import code_page, listing_page, read_chemistry_js
-from .paths import NoProcessRules, resolve, rules_for, split_line_reference, strip_line_reference
+from .page import code_page, edit_href, editor_page, listing_page, read_chemistry_js
+from .paths import NoProcessRules, resolve, rules_for, split_line_reference, strip_line_reference, translate
 from .theme import stylesheet_cached
 
 
@@ -62,6 +67,7 @@ class ServerState:
     last_error_time: float | None = None
     started_at: float = field(default_factory=time.time)
     config_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    edit_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     @classmethod
@@ -167,6 +173,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 self._send_text(503, "serv is paused\n")
                 return
             clean_path = self.path.split("?", 1)[0]
+            if clean_path == "/__serv__/editor.js":
+                self._serve_editor_script()
+                return
+            if clean_path == "/__serv__/edit":
+                self._serve_editor()
+                return
             if clean_path == CSS_URL:
                 self._serve_stylesheet()
                 return
@@ -241,8 +253,165 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_json(self, status: int, data: dict[str, object]) -> None:
+        body = json.dumps(data).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _editor_local_request(self, *, require_origin: bool = True) -> bool:
+        """Allow editor operations only from loopback with a local Host/Origin."""
+        try:
+            if not ipaddress.ip_address(self.client_address[0]).is_loopback:
+                return False
+            host = self.headers.get("Host", "")
+            parsed = urllib.parse.urlsplit(f"http://{host}")
+            if parsed.hostname not in {"localhost", "127.0.0.1"}:
+                return False
+            port = self.server.server_address[1]
+            if parsed.port != port or parsed.username or parsed.password:
+                return False
+            origin = self.headers.get("Origin")
+            return origin == f"http://{host}" if require_origin else True
+        except (ValueError, IndexError):
+            return False
+
+    def _editor_target(self, url_path: str) -> Path | None:
+        """Return an existing, in-root Markdown file that serv permits editing."""
+        if not url_path.startswith("/"):
+            return None
+        path = translate(url_path, self.state.root)
+        try:
+            resolved = path.resolve(strict=True)
+            root = self.state.root.resolve(strict=True)
+            if resolved != path or not resolved.is_relative_to(root):
+                return None
+            if not resolved.is_file() or resolved.suffix.lower() != ".md":
+                return None
+            if self.state.rules.matches(resolved) or resolved.stat().st_size > 2_000_000:
+                return None
+            return resolved
+        except (OSError, RuntimeError):
+            return None
+
+    def _serve_editor_script(self) -> None:
+        """Serve the bundled CodeMirror editor without a third-party request."""
+        from .resources import read_text
+
+        body = read_text("js/editor.js").encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/javascript; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "public, max-age=86400")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _serve_editor(self) -> None:
+        """Serve the browser editor for one existing Markdown file."""
+        if not self._editor_local_request(require_origin=False):
+            self.send_error(403, "The editor is available only from localhost")
+            return
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        paths = query.get("path", [])
+        target = self._editor_target(paths[0]) if len(paths) == 1 else None
+        if target is None:
+            self.send_error(404, "Editable Markdown file not found")
+            return
+        try:
+            raw = target.read_bytes()
+            source = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            self.send_error(415, "Markdown file is not valid UTF-8")
+            return
+        except OSError as error:
+            self.send_error(404, f"Markdown file not found: {error}")
+            return
+        digest = hashlib.sha256(raw).hexdigest()
+        title = str(target.relative_to(self.state.root))
+        page = editor_page(
+            title, paths[0], source, digest, preview_href=paths[0],
+        )
+        self._send_html(page)
+
+    def do_POST(self) -> None:  # noqa: N802 - http.server naming
+        """Save edits from the local browser editor."""
+        self.state.note_request()
+        if self.state.paused:
+            self._send_text(503, "serv is paused\n")
+            return
+        if urllib.parse.urlsplit(self.path).path != "/__serv__/edit":
+            self.send_error(404)
+            return
+        if not self._editor_local_request():
+            self.send_error(403, "Editor saves are allowed only from localhost")
+            return
+        if self.headers.get_content_type() != "application/json":
+            self.send_error(415, "Expected application/json")
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "-1"))
+        except ValueError:
+            length = -1
+        if length < 0 or length > 2_100_000:
+            self.send_error(413, "Invalid or oversized editor request")
+            return
+        try:
+            payload = json.loads(self.rfile.read(length))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            self.send_error(400, "Invalid JSON editor request")
+            return
+        if not isinstance(payload, dict):
+            self.send_error(400, "Invalid editor request")
+            return
+        url_path, source, revision = payload.get("path"), payload.get("text"), payload.get("revision")
+        if not isinstance(url_path, str) or not isinstance(source, str) or not isinstance(revision, str):
+            self.send_error(400, "Editor request needs path, text and revision")
+            return
+        try:
+            encoded = source.encode("utf-8")
+        except UnicodeEncodeError:
+            self.send_error(400, "Editor text must be valid UTF-8")
+            return
+        if len(encoded) > 2_000_000:
+            self.send_error(413, "Markdown file exceeds the 2 MB editor limit")
+            return
+        target = self._editor_target(url_path)
+        if target is None:
+            self.send_error(404, "Editable Markdown file not found")
+            return
+        try:
+            with self.state.edit_lock:
+                current = target.read_bytes()
+                current_revision = hashlib.sha256(current).hexdigest()
+                if current_revision != revision:
+                    self._send_json(409, {"error": "File changed on disk", "revision": current_revision})
+                    return
+                descriptor, temporary_name = tempfile.mkstemp(
+                    prefix=f".{target.name}.", suffix=".tmp", dir=target.parent
+                )
+                try:
+                    with os.fdopen(descriptor, "wb") as stream:
+                        stream.write(encoded)
+                        stream.flush()
+                    os.chmod(temporary_name, target.stat().st_mode & 0o777)
+                    os.replace(temporary_name, target)
+                finally:
+                    if os.path.exists(temporary_name):
+                        os.unlink(temporary_name)
+        except OSError as error:
+            self.state.note_error(f"edit {target}: {error}")
+            self.send_error(500, "Could not save Markdown file")
+            return
+        revision = hashlib.sha256(encoded).hexdigest()
+        self.state.cache.clear()
+        self._send_json(200, {"revision": revision})
 
     def _too_large(self, path: Path) -> bool:
         """Return whether the file is too big to render."""
@@ -279,12 +448,22 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         parent = url_path.rsplit("/", 1)[0] + "/" if "/" in url_path else "/"
         # Size and mtime are part of the key because the footer shows them; a
         # touch must refresh the page even when the content is unchanged.
-        key = (str(path), digest, str(stat.st_mtime_ns), str(stat.st_size))
+        editing_allowed = (
+            self._editor_local_request(require_origin=False)
+            and not self.state.rules.matches(path)
+            and stat.st_size <= 2_000_000
+        )
+        key = (str(path), digest, str(stat.st_mtime_ns), str(stat.st_size), str(editing_allowed))
 
         def render() -> str:
             source = path.read_text(encoding="utf-8", errors="replace")
             return self.state.renderer.render_document(
-                source, path.name, parent, size=stat.st_size, modified=stat.st_mtime
+                source,
+                path.name,
+                parent,
+                edit_href=edit_href(url_path) if editing_allowed else None,
+                size=stat.st_size,
+                modified=stat.st_mtime,
             )
 
         try:

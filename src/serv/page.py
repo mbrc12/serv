@@ -10,6 +10,7 @@ from __future__ import annotations
 import html
 from pathlib import Path
 import time
+import urllib.parse
 
 from .constants import CSS_URL
 from .highlight import language_for
@@ -73,6 +74,28 @@ UP_ARROW = (
     '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">'
     '<path d="M8 13V3M4 7l4-4 4 4" fill="none" stroke="currentColor" '
     'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+)
+
+EDIT_ICON = (
+    '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">'
+    '<path d="m11.7 2.3 2 2L6 12l-3 .8.8-3z" fill="none" stroke="currentColor" '
+    'stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>'
+    '<path d="m10.5 3.5 2 2" fill="none" stroke="currentColor" '
+    'stroke-width="1.3" stroke-linecap="round"/></svg>'
+)
+
+SAVE_ICON = (
+    '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">'
+    '<path d="M2.5 2.5h9l2 2v9h-11z" fill="none" stroke="currentColor" '
+    'stroke-width="1.3" stroke-linejoin="round"/>'
+    '<path d="M5 2.8v4h5v-4M5 13v-4h6v4" fill="none" stroke="currentColor" '
+    'stroke-width="1.3" stroke-linejoin="round"/></svg>'
+)
+
+PREVIEW_ICON = (
+    '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">'
+    '<path d="M13 8H3m4-4-4 4 4 4" fill="none" stroke="currentColor" '
+    'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 )
 
 LISTING_SCRIPT = """<script>
@@ -153,13 +176,47 @@ def document(
 """
 
 
-def parent_navigation(parent_href: str) -> str:
-    """Return the up-arrow link to the directory holding a document."""
+def parent_navigation(parent_href: str, edit_href: str | None = None) -> str:
+    """Return navigation links for the parent folder and optional editor."""
+    edit = (
+        f'<a class="markdown-edit" href="{html.escape(edit_href, quote=True)}">'
+        f'{EDIT_ICON}<span>Edit</span></a>'
+        if edit_href is not None
+        else ""
+    )
     return (
         '<nav class="markdown-parent">'
         f'<a href="{html.escape(parent_href, quote=True)}" aria-label="Parent folder" '
-        f'title="Parent folder">{UP_ARROW}</a></nav>'
+        f'title="Parent folder">{UP_ARROW}</a>{edit}</nav>'
     )
+
+
+def editor_page(
+    title: str, path: str, source: str, revision: str, *, preview_href: str
+) -> str:
+    """Return the local Markdown editor shell and its initial source."""
+    body = f'''<header class="editor-toolbar">
+  <a class="editor-back" href="{html.escape(preview_href, quote=True)}">{PREVIEW_ICON}<span>Preview</span></a>
+  <h1>{html.escape(title)}</h1>
+  <span id="save-status" role="status" aria-live="polite">All changes saved</span>
+  <button id="save" type="button" disabled>{SAVE_ICON}<span>Save</span></button>
+</header>
+<div id="editor" aria-label="Markdown editor"></div>
+<textarea id="source" hidden>{html.escape(source)}</textarea>'''
+    document_html = document(title, body, body_class="editor-page")
+    editor_data = (
+        f'<body class="editor-page" data-path="{html.escape(path, quote=True)}" '
+        f'data-revision="{html.escape(revision, quote=True)}">'
+    )
+    document_html = document_html.replace('<body class="editor-page">', editor_data, 1)
+    return document_html.replace(
+        "</body>", '<script src="/__serv__/editor.js"></script>\n</body>', 1
+    )
+
+
+def edit_href(url_path: str) -> str:
+    """Build the editor route for one encoded request path."""
+    return "/__serv__/edit?path=" + urllib.parse.quote(url_path, safe="/")
 
 
 def code_page(source: str, path: Path, display_root: Path, highlight_line: int | None = None) -> str:

@@ -216,6 +216,7 @@ class MarkdownRenderer:
         title: str,
         parent_href: str,
         *,
+        edit_href: str | None = None,
         size: int | None = None,
         modified: float | None = None,
     ) -> str:
@@ -228,7 +229,7 @@ class MarkdownRenderer:
         headings = self._headings(tokens)
         body = self.md.renderer.render(tokens, self.md.options, {})
         toc = build_toc(headings)
-        content = parent_navigation(parent_href) + "\n" + place_toc(body, toc)
+        content = parent_navigation(parent_href, edit_href) + "\n" + place_toc(body, toc)
         if size is not None and modified is not None:
             content += "\n" + document_footer(size, modified, word_count(source))
         page_title = heading_title(headings) or title

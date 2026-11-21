@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
+import json
+import re
 import threading
 import urllib.error
 import urllib.request
@@ -40,14 +43,21 @@ def site(tmp_path_factory: pytest.TempPathFactory):
     server.server_close()
 
 
-def fetch(url: str) -> tuple[int, str, dict[str, str]]:
+def request(
+    url: str, *, data: bytes | None = None, headers: dict[str, str] | None = None
+) -> tuple[int, str, dict[str, str]]:
+    req = urllib.request.Request(url, data=data, headers=headers or {})
     try:
-        with urllib.request.urlopen(url, timeout=10) as response:
-            headers = {key.lower(): value for key, value in response.headers.items()}
-            return response.status, response.read().decode("utf-8", "replace"), headers
+        with urllib.request.urlopen(req, timeout=10) as response:
+            response_headers = {key.lower(): value for key, value in response.headers.items()}
+            return response.status, response.read().decode("utf-8", "replace"), response_headers
     except urllib.error.HTTPError as error:
-        headers = {key.lower(): value for key, value in error.headers.items()}
-        return error.code, error.read().decode("utf-8", "replace"), headers
+        response_headers = {key.lower(): value for key, value in error.headers.items()}
+        return error.code, error.read().decode("utf-8", "replace"), response_headers
+
+
+def fetch(url: str) -> tuple[int, str, dict[str, str]]:
+    return request(url)
 
 
 def test_stylesheet_is_generated_from_the_config(site) -> None:
@@ -70,10 +80,101 @@ def test_markdown_page_renders_with_toc_and_parent_link(site) -> None:
     assert '<nav id="TOC"' in body
     assert 'class="markdown-parent"' in body
     assert 'href="/"' in body  # parent folder of /notes.md
+    assert 'class="markdown-edit" href="/__serv__/edit?path=/notes.md"' in body
     assert "math inline" in body
     assert 'class="markdown-footer"' in body
     assert "bytes" not in body  # readable units, not raw bytes
     assert "min read" in body
+
+
+def test_editor_assets_are_served_from_serv(site) -> None:
+    base, _, _ = site
+    status, body, headers = fetch(f"{base}/__serv__/editor.js")
+    assert status == 200
+    assert headers["content-type"].startswith("text/javascript")
+    assert "CodeMirror" in body
+    assert "cdn.jsdelivr.net" not in body
+
+
+def test_editor_loads_markdown_and_saves_with_revision_check(site) -> None:
+    base, _, root = site
+    status, page, headers = fetch(f"{base}/__serv__/edit?path=/notes.md")
+    assert status == 200
+    assert headers["cache-control"] == "no-store"
+    assert 'id="editor"' in page
+    assert 'src="/__serv__/editor.js"' in page
+    assert "Some $x^2$ math." in page
+    revision = re.search(r'data-revision="([0-9a-f]{64})"', page)
+    assert revision is not None
+
+    edited = "# Notes\n\nChanged from the editor.\n"
+    payload = json.dumps({
+        "path": "/notes.md", "text": edited, "revision": revision.group(1)
+    }).encode()
+    status, body, _ = request(
+        f"{base}/__serv__/edit",
+        data=payload,
+        headers={"Content-Type": "application/json", "Origin": base},
+    )
+    assert status == 200
+    saved_revision = json.loads(body)["revision"]
+    assert saved_revision == hashlib.sha256(edited.encode()).hexdigest()
+    assert (root / "notes.md").read_text() == edited
+    assert "Changed from the editor" in fetch(f"{base}/notes.md")[1]
+
+    stale_payload = json.dumps({
+        "path": "/notes.md", "text": "# Overwrite\n", "revision": revision.group(1)
+    }).encode()
+    status, _, _ = request(
+        f"{base}/__serv__/edit",
+        data=stale_payload,
+        headers={"Content-Type": "application/json", "Origin": base},
+    )
+    assert status == 409
+    assert (root / "notes.md").read_text() == edited
+
+
+def test_editor_rejects_nonlocal_origin_and_non_markdown_paths(site) -> None:
+    base, _, _ = site
+    status, _, _ = request(
+        f"{base}/__serv__/edit?path=/notes.md",
+        headers={"Host": "evil.example", "Origin": "http://evil.example"},
+    )
+    assert status == 403
+
+    for path in ("/src/main.py", "/build/notes.md", "/missing.md"):
+        status, _, _ = fetch(f"{base}/__serv__/edit?path={path}")
+        assert status == 404
+
+
+def test_editor_rejects_symlinks_that_resolve_outside_the_root(site) -> None:
+    base, _, root = site
+    outside = root.parent / "outside-editor.md"
+    outside.write_text("# Outside\n")
+    (root / "outside-link.md").symlink_to(outside)
+    try:
+        status, _, _ = fetch(f"{base}/__serv__/edit?path=/outside-link.md")
+        assert status == 404
+        assert outside.read_text() == "# Outside\n"
+    finally:
+        outside.unlink()
+        (root / "outside-link.md").unlink()
+
+
+def test_editor_requires_same_origin_for_saves(site) -> None:
+    base, _, _ = site
+    page = fetch(f"{base}/__serv__/edit?path=/notes.md")[1]
+    revision = re.search(r'data-revision="([0-9a-f]{64})"', page)
+    assert revision is not None
+    payload = json.dumps({
+        "path": "/notes.md", "text": "# attack\n", "revision": revision.group(1)
+    }).encode()
+    status, _, _ = request(
+        f"{base}/__serv__/edit",
+        data=payload,
+        headers={"Content-Type": "application/json", "Origin": "http://evil.example"},
+    )
+    assert status == 403
 
 
 def test_markdown_footer_tracks_file_changes(site) -> None:
