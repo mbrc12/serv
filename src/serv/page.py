@@ -18,6 +18,8 @@ from .resources import data_path
 
 PRISM_VERSION = "1.29.0"
 PRISM_BASE = f"https://cdn.jsdelivr.net/npm/prismjs@{PRISM_VERSION}"
+MONACO_VERSION = "0.57.0"
+MONACO_BASE = f"https://cdn.jsdelivr.net/npm/monaco-editor@{MONACO_VERSION}/min/vs"
 
 # Components Prism's default bundle does not include, in dependency order.
 PRISM_COMPONENTS: dict[str, tuple[str, ...]] = {
@@ -203,15 +205,20 @@ def editor_page(
 </header>
 <div id="editor" aria-label="Markdown editor"></div>
 <textarea id="source" hidden>{html.escape(source)}</textarea>'''
-    document_html = document(title, body, body_class="editor-page")
+    head = [
+        f'<link rel="stylesheet" href="{MONACO_BASE}/editor/editor.main.css">'
+    ]
+    scripts = (
+        f'<script src="{MONACO_BASE}/loader.js"></script>\n'
+        '<script src="/__serv__/editor.js"></script>'
+    )
+    document_html = document(title, body, body_class="editor-page", head=head, scripts=scripts)
     editor_data = (
         f'<body class="editor-page" data-path="{html.escape(path, quote=True)}" '
-        f'data-revision="{html.escape(revision, quote=True)}">'
+        f'data-revision="{html.escape(revision, quote=True)}" '
+        f'data-monaco-base="{MONACO_BASE}">'
     )
-    document_html = document_html.replace('<body class="editor-page">', editor_data, 1)
-    return document_html.replace(
-        "</body>", '<script src="/__serv__/editor.js"></script>\n</body>', 1
-    )
+    return document_html.replace('<body class="editor-page">', editor_data, 1)
 
 
 def edit_href(url_path: str) -> str:

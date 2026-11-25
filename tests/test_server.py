@@ -92,8 +92,11 @@ def test_editor_assets_are_served_from_serv(site) -> None:
     status, body, headers = fetch(f"{base}/__serv__/editor.js")
     assert status == 200
     assert headers["content-type"].startswith("text/javascript")
-    assert "CodeMirror" in body
-    assert "cdn.jsdelivr.net" not in body
+    assert headers["cache-control"] == "no-cache"
+    assert "monaco.editor.create" in body
+    assert "installPlainTextClipboardHandlers" in body
+    assert "stopImmediatePropagation" in body
+    assert "CodeMirror" not in body
 
 
 def test_editor_loads_markdown_and_saves_with_revision_check(site) -> None:
@@ -103,6 +106,8 @@ def test_editor_loads_markdown_and_saves_with_revision_check(site) -> None:
     assert headers["cache-control"] == "no-store"
     assert 'id="editor"' in page
     assert 'src="/__serv__/editor.js"' in page
+    assert 'monaco-editor@0.57.0/min/vs/loader.js' in page
+    assert 'monaco-editor@0.57.0/min/vs/editor/editor.main.css' in page
     assert "Some $x^2$ math." in page
     revision = re.search(r'data-revision="([0-9a-f]{64})"', page)
     assert revision is not None
